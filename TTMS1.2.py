@@ -112,8 +112,17 @@ def login_window(theme_color="#1a237e", window_size=(400, 500)):
 
     root = tk.Tk()
     root.title("Login")
-    # Load and set window icon
-    icon_path = "icons/logo1.png"  # Adjust path to your logo file
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
+
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Make window size adjustable
@@ -282,8 +291,17 @@ def admin_dashboard(user_type="Admin",username=None, login_window=None):
     header_frame = tk.Frame(main_frame, bg="#1a237e", height=150)
     header_frame.pack(fill=tk.X, side=tk.TOP)
 
-    # Load and set window icon
-    icon_path = "icons/logo1.png"  # Adjust path to your logo file
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
+
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -350,13 +368,13 @@ def admin_dashboard(user_type="Admin",username=None, login_window=None):
     content_frame.grid_rowconfigure((0, 1, 2), weight=1)
 
     buttons = [
-        ("Manage Drivers", "icons/drivers.png", open_driver_management, 0, 0),
-        ("Manage Trucks", "icons/trucks.png", open_truck_management, 0, 1),
-        ("Manage Orders", "icons/orders.png", open_order_management, 0, 2),
-        ("Manage Accounts", "icons/accounts.png", open_account_management, 1, 0),
-        ("Manage Dispatch", "icons/dispatch1.png", open_dispatch_management, 1, 1),
-        ("View Reports", "icons/reports.png", open_report_management, 1, 2),
-        ("User Management", "icons/users.png", open_user_management, 2, 1),
+        ("Manage Drivers", resource_path("icons/drivers.png"), open_driver_management, 0, 0),
+        ("Manage Trucks", resource_path("icons/trucks.png"), open_truck_management, 0, 1),
+        ("Manage Orders", resource_path("icons/orders.png"), open_order_management, 0, 2),
+        ("Manage Accounts", resource_path("icons/accounts.png"), open_account_management, 1, 0),
+        ("Manage Dispatch", resource_path("icons/dispatch1.png"), open_dispatch_management, 1, 1),
+        ("View Reports", resource_path("icons/reports.png"), open_report_management, 1, 2),
+        ("User Management", resource_path("icons/users.png"), open_user_management, 2, 1),
     ]
 
     for text, icon_path, command, row, col in buttons:
@@ -446,8 +464,17 @@ def manager_dashboard(user_type="Manager",username=None, login_window=None):
     header_frame = tk.Frame(main_frame, bg="#1a237e", height=150)
     header_frame.pack(fill=tk.X, side=tk.TOP)
 
-    # Load and set window icon
-    icon_path = "icons/logo1.png"  # Adjust path to your logo file
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
+
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -514,13 +541,13 @@ def manager_dashboard(user_type="Manager",username=None, login_window=None):
     content_frame.grid_rowconfigure((0, 1, 2), weight=1)
 
     buttons = [
-        ("Manage Drivers", "icons/drivers.png", open_driver_management, 0, 0),
-        ("Manage Trucks", "icons/trucks.png", open_truck_management, 0, 1),
-        ("Manage Orders", "icons/orders.png", open_order_management, 0, 2),
-        ("Manage Accounts", "icons/accounts.png", open_account_management, 1, 0),
-        ("Manage Dispatch", "icons/dispatch1.png", open_dispatch_management, 1, 1),
-        ("View Reports", "icons/reports.png", open_report_management, 1, 2),
-        # ("User Management", "icons/users.png", open_user_management, 2, 1),
+        ("Manage Drivers", resource_path("icons/drivers.png"), open_driver_management, 0, 0),
+        ("Manage Trucks", resource_path("icons/trucks.png"), open_truck_management, 0, 1),
+        ("Manage Orders", resource_path("icons/orders.png"), open_order_management, 0, 2),
+        ("Manage Accounts", resource_path("icons/accounts.png"), open_account_management, 1, 0),
+        ("Manage Dispatch", resource_path("icons/dispatch1.png"), open_dispatch_management, 1, 1),
+        ("View Reports", resource_path("icons/reports.png"), open_report_management, 1, 2),
+        # ("User Management", resource_path("icons/users.png"), open_user_management, 2, 1),
     ]
 
     for text, icon_path, command, row, col in buttons:
@@ -586,8 +613,17 @@ def accountant_dashboard(user_type="Accountant",username=None, login_window=None
     header_frame = tk.Frame(main_frame, bg="#1a237e", height=150)
     header_frame.pack(fill=tk.X, side=tk.TOP)
 
-    # Load and set window icon
-    icon_path = "icons/logo1.png"  # Adjust path to your logo file
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
+
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -652,7 +688,7 @@ def accountant_dashboard(user_type="Accountant",username=None, login_window=None
     content_frame.grid_rowconfigure((0,1,2), weight=1)
 
     buttons = [
-        ("Manage Accounts", "icons/accounts.png", open_account_management, 0, 0),
+        ("Manage Accounts", resource_path("icons/accounts.png"), open_account_management, 0, 0),
 
     ]
 
@@ -723,8 +759,17 @@ def dispatcher_dashboard(user_type="Dispatcher",username=None, login_window=None
     header_frame = tk.Frame(main_frame, bg="#1a237e", height=150)
     header_frame.pack(fill=tk.X, side=tk.TOP)
 
-    # Load and set window icon
-    icon_path = "icons/logo1.png"  # Adjust path to your logo file
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
+
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -789,8 +834,8 @@ def dispatcher_dashboard(user_type="Dispatcher",username=None, login_window=None
     content_frame.grid_rowconfigure((0, 1, 2), weight=1)
 
     buttons = [
-        ("Manage Dispatch", "icons/dispatch1.png", open_dispatch_management, 0, 0),
-        ("Manage Orders", "icons/orders.png", open_order_management, 0, 1),
+        ("Manage Dispatch", resource_path("icons/dispatch1.png"), open_dispatch_management, 0, 0),
+        ("Manage Orders", resource_path("icons/orders.png"), open_order_management, 0, 1),
 
     ]
 
@@ -1172,9 +1217,17 @@ def driver_management_gui(user_role=""):
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
 
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
 
-    # Load and set window icon
-    icon_path = "icons/logo1.png"  # Adjust path to your logo file
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -1675,9 +1728,17 @@ def truck_management_gui(user_role=""):
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
 
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
 
-    # Load and set window icon
-    icon_path = "icons/logo1.png"  # Adjust path to your logo file
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -2133,9 +2194,17 @@ def order_management_gui(user_role=""):
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
 
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
 
-    # Load and set window icon
-    icon_path = "icons/logo1.png"  # Adjust path to your logo file
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -2780,9 +2849,17 @@ def dispatch_management_gui(user_role=""):
     header_frame = tk.Frame(root, bg="#1a237e", height=100)  # Reduced from 150 to 100
     header_frame.grid(row=0, column=0, sticky="ew")
 
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
 
-    # Load and set window icon
-    icon_path = "icons/logo1.png"  # Adjust path to your logo file
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -3152,8 +3229,17 @@ def accounts_management_gui(user_role=""):
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
 
-    # Load and set window icon
-    icon_path = "icons/logo1.png"
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
+
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo with smaller dimensions
@@ -3536,8 +3622,17 @@ def reports_analytics_gui(user_role=""):
     header_frame.grid_columnconfigure(0, weight=1)
 
 
-    # Load and set window icon
-    icon_path = "icons/logo1.png"  # Adjust path to your logo file
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
+
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -3834,9 +3929,17 @@ def user_management_gui():
     header_frame = tk.Frame(root, bg="#1a237e", height=100)
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
 
-    # Load and set window icon
-    icon_path = "icons/logo1.png"  # Adjust path to your logo file
+    # Then use it for your icon paths:
+    icon_path = resource_path("icons/logo1.png")
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -4007,4 +4110,3 @@ def user_management_gui():
 
 if __name__ == "__main__":
     login_window(window_size=(300, 400))  # Larger window
-
