@@ -1003,7 +1003,7 @@ def driver_management_gui(user_role=""):
     def track_salary_payment(driver_id, amount):
         """Record salary payment for a driver"""
         try:
-            conn = sqlite3.connect('fleet_management.db')
+            conn = sqlite3.connect('TTMS.db')
             cursor = conn.cursor()
 
             # Check current salary status
@@ -1020,7 +1020,7 @@ def driver_management_gui(user_role=""):
 
                 # Record payment in salary history
                 cursor.execute("""
-                    INSERT INTO SalaryHistory (DriverID, Amount, Payment_Date, Status)
+                    INSERT INTO SalaryHistory (DriverID, Amount, PaymentDate, Status)
                     VALUES (?, ?, date('now'), 'Paid')
                 """, (driver_id, amount))
 
@@ -1045,44 +1045,7 @@ def driver_management_gui(user_role=""):
             # Get salary payments for current month
             cursor.execute("""
                 SELECT * FROM SalaryHistory
-                WHERE strftime('%Y-%m', Payment_Date) = ?
-            """, (current_month,))
-            monthly_data = cursor.fetchall()
-
-            # Get unpaid salaries
-            cursor.execute("""
-                SELECT DriverID, Name FROM Drivers
-                WHERE Salary_Status = 'Unpaid'
-            """)
-            unpaid_drivers = cursor.fetchall()
-            # Generate report
-            report = f"Monthly Salary Report ({current_month})\n\n"
-            report += f"Total Payments: {len(monthly_data)}\n"
-            report += f"Total Amount: /-{sum(payment[1] for payment in monthly_data)}\n\n"
-
-            if unpaid_drivers:
-                report += "Unpaid Salary Reminders:\n"
-                for driver in unpaid_drivers:
-                    report += f"Unpaid salary for Driver {driver[1]} (ID: {driver[0]})\n"
-
-            conn.close()
-            messagebox.showinfo("Salary Report", report)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to generate salary report: {e}")
-
-    def generate_salary_report():
-        """Generate monthly salary report"""
-        try:
-            conn = sqlite3.connect('TTMS.db')
-            cursor = conn.cursor()
-
-            # Get current month's data
-            current_month = datetime.now().strftime("%Y-%m")
-
-            # Get salary payments for current month
-            cursor.execute("""
-                SELECT * FROM SalaryHistory
-                WHERE strftime('%Y-%m', Payment_Date) = ?
+                WHERE strftime('%Y-%m', PaymentDate) = ?
             """, (current_month,))
             monthly_data = cursor.fetchall()
 
@@ -1153,16 +1116,18 @@ def driver_management_gui(user_role=""):
             messagebox.showerror("Error", f"Failed to generate status report: {e}")
 
     def update_driver(driver_id, updated_data):
-        """Update existing driver data."""
         try:
-            conn = sqlite3.connect('TTMS.db')
+            conn = sqlite3.connect('TTMS.db')  # Make sure this matches your actual database name
             cursor = conn.cursor()
             cursor.execute("""
                     UPDATE Drivers
                     SET Name=?, CNIC=?, LicenseExp=?, Address=?, Contact=?,
                         Salary=?, Salary_Status=?, DOJ=?, DOR=?, Trip=?, Status=?
                     WHERE DriverID=?
-                """, (*updated_data[1:], driver_id))
+                """, (updated_data[1], updated_data[2], updated_data[3],
+                      updated_data[4], updated_data[5], updated_data[6],
+                      updated_data[7], updated_data[8], updated_data[9],
+                      updated_data[10], updated_data[11], driver_id))
             conn.commit()
             conn.close()
             messagebox.showinfo("Success", "Driver updated successfully!")
@@ -1248,7 +1213,7 @@ def driver_management_gui(user_role=""):
         }
 
         try:
-            conn = sqlite3.connect('fleet_management.db')
+            conn = sqlite3.connect('TTMS.db')
             cursor = conn.cursor()
 
             column = criteria_map.get(criteria, "Name")
@@ -1315,10 +1280,12 @@ def driver_management_gui(user_role=""):
             trip_count_entry.get(),
             trip_status_combo.get()
         ]
-        if trip_status_combo.get() == "On Trip":
-            update_trip_count(selected_row_index + 1)
+        print(f"Updating driver ")  # Debug print
 
-        update_driver(selected_row_index + 1, updated_data)
+        if trip_status_combo.get() == "On Trip":
+            update_trip_count(selected_row_index)
+
+        update_driver(selected_row_index, updated_data)
         load_data_into_table()
 
     def delete_selected_driver():
@@ -1565,10 +1532,6 @@ def driver_management_gui(user_role=""):
         bg="#1a237e",
         fg="white",
     ).pack(pady=10)
-
-    # Footer frame - Ensure it's placed last and fixed size
-
-    # Rest of the table configuration code...
 
     root.mainloop()
 
@@ -4522,13 +4485,5 @@ def user_management_gui():
     root.mainloop()
 
 
-
-
 if __name__ == "__main__":
     login_window(window_size=(300, 400))  # Larger window
-
-
-
-
-
-
