@@ -2,6 +2,7 @@ import sys
 import tkinter as tk
 from tkinter import messagebox,ttk
 from tkcalendar import DateEntry
+from fpdf import FPDF
 import os
 from matplotlib import pyplot as plt
 from ttkthemes import ThemedTk
@@ -3453,6 +3454,59 @@ def reports_analytics_gui(user_role=""):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to export data: {e}")
 
+    def export_to_pdf(data, filename):
+        try:
+            pdf = FPDF(format='A4')  # Explicitly specify format
+            pdf.set_auto_page_break(auto=True, margin=15)
+            pdf.add_page()
+
+            # Set font before writing
+            pdf.set_font("helvetica", size=11)
+
+            # Add headers
+            headers = list(data[0].keys())
+            for header in headers:
+                pdf.cell(40, 10, str(header), 1)
+            pdf.ln()
+
+            # Add data
+            for row in data:
+                for key in headers:
+                    pdf.cell(40, 10, str(row[key]), 1)
+                pdf.ln()
+
+            # Save with timestamp
+            export_filename = f"{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            pdf.output(export_filename)
+            messagebox.showinfo("Success", f"PDF exported successfully as {export_filename}!")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export PDF: {e}")
+
+    def export_to_csv(data, filename):
+        try:
+            import csv
+            export_filename = f"{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+            with open(export_filename, 'w', newline='') as csvfile:
+                if not data:
+                    messagebox.showinfo("Warning", "No data to export!")
+                    return
+
+                # Write headers
+                fieldnames = list(data[0].keys())
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+
+                # Write data
+                for row in data:
+                    writer.writerow(row)
+
+            messagebox.showinfo("Success", f"Data exported successfully to {export_filename}!")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export CSV: {e}")
+
     def generate_fleet_report():
         try:
             workbook = openpyxl.load_workbook(WORKBOOK_PATH)
@@ -3468,7 +3522,7 @@ def reports_analytics_gui(user_role=""):
                     "Model": truck[1],
                     "Status": truck[2],
                     "Total Trips": usage_count,
-                    "Odometer": truck[5]
+                    "Odometer": truck[6]
                 })
 
             update_fleet_chart(fleet_data)
@@ -3698,14 +3752,33 @@ def reports_analytics_gui(user_role=""):
         ("Generate Fleet Performance", generate_fleet_report),
         ("Generate Driver Performance", generate_driver_performance),
         ("Generate Financial Summary", generate_financial_summary),
-        ("Export Fleet Data", lambda: export_to_excel(generate_fleet_report(), "fleet_report")),
-        ("Export Driver Data", lambda: export_to_excel(generate_driver_performance(), "driver_report")),
-        ("Export Financial Data", lambda: export_to_excel(generate_financial_summary(), "financial_report"))
+        ("Export Fleet Data", lambda: export_data(generate_fleet_report(), "fleet_report")),
+        ("Export Driver Data", lambda: export_data(generate_driver_performance(), "driver_report")),
+        ("Export Financial Data", lambda: export_data(generate_financial_summary(), "financial_report"))
     ]
 
     for idx, (text, command) in enumerate(buttons):
         ttk.Button(control_panel, text=text, command=command).grid(
             row=idx, column=0, pady=5, padx=5, sticky="ew")
+
+    export_frame = ttk.LabelFrame(control_panel, text="Export Options")
+    export_frame.grid(row=len(buttons) + 1, column=0, pady=10, padx=5, sticky="ew")
+
+    export_format = tk.StringVar(value="excel")
+    ttk.Radiobutton(export_frame, text="Excel", variable=export_format, value="excel").pack()
+    ttk.Radiobutton(export_frame, text="PDF", variable=export_format, value="pdf").pack()
+    ttk.Radiobutton(export_frame, text="CSV", variable=export_format, value="csv").pack()
+
+    # Modify export button command
+    def export_data(data, filename):
+        format_type = export_format.get()
+        if format_type == "excel":
+            export_to_excel(data, filename)
+        elif format_type == "pdf":
+            export_to_pdf(data, filename)
+        elif format_type == "csv":
+
+            export_to_csv(data, filename)
 
     # Right panel for charts and data display
     display_panel = ttk.Frame(main_container)
