@@ -1,6 +1,8 @@
 import sys,csv
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import Table,SimpleDocTemplate
+from reportlab.platypus import Table,SimpleDocTemplate, TableStyle
+from datetime import datetime, date
+from reportlab.lib import colors
 import tempfile
 import tkinter as tk
 from tkinter import messagebox,ttk,filedialog
@@ -18,8 +20,10 @@ import openpyxl
 from tkinter import *
 import logging
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from PIL import Image, ImageTk
+import matplotlib.pyplot as plt
+import seaborn as sns
 # Load the workbook
 # At the start of your program
 WORKBOOK_PATH = "TTMS.xlsx"
@@ -3245,6 +3249,7 @@ def order_management_gui(user_role=""):
 # Main Dispatch Management GUI
 def dispatch_management_gui(user_role=""):
     import datetime
+    from datetime import datetime
     def go_back():
         root.destroy()
         if user_role == "Admin":
@@ -3364,7 +3369,7 @@ def dispatch_management_gui(user_role=""):
         status_options = ["In Transit", "Out for Delivery", "Delivered", "Completed"]
         status_combo = ttk.Combobox(form_frame, values=status_options, width=30)
         status_combo.grid(row=5, column=1, padx=10, pady=5)
-        ttk.Button(form_frame, text="Update", command=lambda: update_status(selected_item)).grid(row=5, column=2, padx=10, pady=5)
+        ttk.Button(form_frame, text="Update", command=lambda: update_status(selected_item)).grid(row=5, column=0, padx=10, pady=5)
 
         def update_status(selected_item):
             new_status = status_combo.get()
@@ -3676,6 +3681,150 @@ def dispatch_management_gui(user_role=""):
             messagebox.showerror("Error", f"Failed to load trucks data: {e}")
             return []
 
+
+    def print_selected_dispatch():
+        """Print selected dispatch details to PDF"""
+        selected_item = dispatch_table.selection()
+        if not selected_item:
+            messagebox.showerror("Error", "Please select a dispatch to print")
+            return
+
+        try:
+            values = dispatch_table.item(selected_item)['values']
+
+            # Create exports directory if it doesn't exist
+            if not os.path.exists('exports'):
+                os.makedirs('exports')
+
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"exports/dispatch_report_{timestamp}.pdf"
+
+            # Create PDF
+            doc = SimpleDocTemplate(filename, pagesize=letter)
+            elements = []
+
+            # Add header
+            data = [
+                ["DISPATCH REPORT"],
+                ["TruckFlow Solutions"],
+                ["Generated on: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                [""],  # Empty row for spacing
+                ["Dispatch Details"],
+                ["Order ID:", values[0]],
+                ["Driver:", values[1]],
+                ["Truck:", values[2]],
+                ["Dispatch Time:", values[3]],
+                ["Status:", values[4]],
+                ["Estimated Delivery:", values[5]],
+                ["Progress:", values[6]]
+            ]
+
+            # Create table and style it
+            table = Table(data)
+            table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 16),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 4), (-1, 4), colors.grey),
+                ('TEXTCOLOR', (0, 4), (-1, 4), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 4), (-1, 4), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 4), (-1, 4), 12),
+                ('BOTTOMPADDING', (0, 4), (-1, 4), 12),
+                ('GRID', (0, 5), (-1, -1), 1, colors.black)
+            ]))
+
+            elements.append(table)
+            doc.build(elements)
+
+            messagebox.showinfo("Success", f"Dispatch report saved as {filename}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to print dispatch: {str(e)}")
+            log_error(f"Failed to print dispatch: {str(e)}")
+
+    def export_dispatches():
+        """Export dispatch data to various formats"""
+        try:
+            # Get all dispatch data
+            dispatches = load_dispatch_data()
+            if not dispatches:
+                messagebox.showerror("Error", "No dispatch data to export")
+                return
+
+            # Create exports directory if it doesn't exist
+            if not os.path.exists('exports'):
+                os.makedirs('exports')
+
+            # Get timestamp for filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            # Create export format selection window
+            export_window = tk.Toplevel(root)
+            export_window.title("Export Dispatches")
+            export_window.geometry("300x150")
+
+            def export_to_format(format_type):
+                try:
+                    if format_type == "excel":
+                        filename = f"exports/dispatches_{timestamp}.xlsx"
+                        df = pd.DataFrame(dispatches, columns=["Order ID", "Driver", "Truck", "Dispatch Time",
+                                                               "Status", "Estimated Delivery Time"])
+                        df.to_excel(filename, index=False)
+
+                    elif format_type == "csv":
+                        filename = f"exports/dispatches_{timestamp}.csv"
+                        with open(filename, 'w', newline='') as f:
+                            writer = csv.writer(f)
+                            writer.writerow(["Order ID", "Driver", "Truck", "Dispatch Time",
+                                             "Status", "Estimated Delivery Time"])
+                            writer.writerows(dispatches)
+
+                    elif format_type == "pdf":
+                        filename = f"exports/dispatches_{timestamp}.pdf"
+                        doc = SimpleDocTemplate(filename, pagesize=letter)
+                        elements = []
+
+                        # Add header and data to table
+                        data = [["Order ID", "Driver", "Truck", "Dispatch Time",
+                                 "Status", "Estimated Delivery Time"]]
+                        data.extend(dispatches)
+
+                        table = Table(data)
+                        table.setStyle(TableStyle([
+                            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                        ]))
+
+                        elements.append(table)
+                        doc.build(elements)
+
+                    messagebox.showinfo("Success", f"Dispatches exported successfully to {filename}")
+                    export_window.destroy()
+
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to export: {str(e)}")
+                    log_error(f"Failed to export: {str(e)}")
+
+            # Export format buttons
+            ttk.Button(export_window, text="Export to Excel",
+                       command=lambda: export_to_format("excel")).pack(pady=10)
+            ttk.Button(export_window, text="Export to CSV",
+                       command=lambda: export_to_format("csv")).pack(pady=10)
+            ttk.Button(export_window, text="Export to PDF",
+                       command=lambda: export_to_format("pdf")).pack(pady=10)  # Fixed pack()
+
+        except Exception as e:  # Properly formatted exception handling
+            messagebox.showerror("Error", f"Failed to prepare export: {str(e)}")
+            log_error(f"Failed to prepare export: {str(e)}")
+
+
     root = ThemedTk(theme="arc")
     root.title("Dispatch Management System")
     root.geometry("1024x768")
@@ -3771,15 +3920,30 @@ def dispatch_management_gui(user_role=""):
         widget.grid(row=i, column=1, padx=10, pady=8, sticky="w")
 
     # Buttons with improved layout
+    # Buttons with improved layout
     button_frame = ttk.Frame(form_frame)
     button_frame.grid(row=len(fields), column=0, columnspan=2, pady=15)
-    for text, command in [
+
+    # Create two rows of buttons (3 buttons per row)
+    for idx, (text, command) in enumerate([
         ("Assign Dispatch", assign_dispatch),
         ("Update Status", update_selected_dispatch),
         ("Delete Dispatch", delete_dispatch),
+        ("Print Dispatch", print_selected_dispatch),
+        ("Export", export_dispatches),
         ("Refresh", load_data_into_table)
-    ]:
-        ttk.Button(button_frame, text=text, command=command).pack(side=tk.LEFT, padx=5)
+    ]):
+        row = idx // 3  # Determines the row (0 or 1)
+        col = idx % 3  # Determines the column (0, 1, or 2)
+        ttk.Button(button_frame, text=text, command=command).grid(
+            row=row, column=col, padx=5, pady=5, sticky="ew"
+        )
+
+    # Configure grid columns to be evenly spaced
+    for i in range(3):
+        button_frame.grid_columnconfigure(i, weight=1)
+
+
 
     # Create tree container frames with scrollbars
     def create_scrolled_tree(parent, columns, height=5, col_widths=None):
@@ -4054,6 +4218,126 @@ def accounts_management_gui(user_role=""):
         load_data_into_table()
         update_totals_display()
 
+    # Add these new functions after the existing function definitions
+
+    def print_transaction():
+        """Print selected transaction details"""
+        selected_item = transaction_table.selection()
+        if not selected_item:
+            messagebox.showwarning("Warning", "Please select a transaction to print")
+            return
+
+        item = transaction_table.item(selected_item[0])
+        transaction_data = item['values']
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"Transaction_{timestamp}.txt"
+
+        try:
+            with open(filename, 'w') as f:
+                f.write("=== TRUCKFLOW SOLUTIONS ===\n")
+                f.write("Transaction Receipt\n")
+                f.write("-" * 40 + "\n")
+                f.write(f"Date: {transaction_data[0]}\n")
+                f.write(f"Type: {transaction_data[1]}\n")
+                f.write(f"Amount: /-{transaction_data[2]}\n")
+                f.write(f"Description: {transaction_data[3]}\n")
+                f.write(f"Payment Method: {transaction_data[4]}\n")
+                f.write("-" * 40 + "\n")
+
+            # Open the file with default printer
+            os.startfile(filename, "print")
+            messagebox.showinfo("Success", "Transaction sent to printer")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to print transaction: {e}")
+
+    def export_to_pdf():
+        """Export financial report to PDF"""
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import letter
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+            from reportlab.lib.styles import getSampleStyleSheet
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"Financial_Report_{timestamp}.pdf"
+
+            doc = SimpleDocTemplate(filename, pagesize=letter)
+            elements = []
+
+            # Add title
+            styles = getSampleStyleSheet()
+            elements.append(Paragraph("Financial Report", styles['Title']))
+
+            # Get transaction data
+            data = [["Date", "Type", "Amount", "Description", "Payment Method"]]
+            for item in transaction_table.get_children():
+                row = transaction_table.item(item)['values']
+                data.append(row)
+
+            # Create table
+            table = Table(data)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.blue),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 14),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 12),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+
+            elements.append(table)
+            doc.build(elements)
+            messagebox.showinfo("Success", f"Report exported as {filename}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export report: {e}")
+
+    def filter_transactions():
+        """Filter transactions by date range and type"""
+        filter_window = tk.Toplevel(root)
+        filter_window.title("Filter Transactions")
+        filter_window.geometry("400x300")
+
+        ttk.Label(filter_window, text="Start Date:").pack(pady=5)
+        start_date = DateEntry(filter_window, width=12, background='darkblue',
+                               foreground='white', borderwidth=2)
+        start_date.pack(pady=5)
+
+        ttk.Label(filter_window, text="End Date:").pack(pady=5)
+        end_date = DateEntry(filter_window, width=12, background='darkblue',
+                             foreground='white', borderwidth=2)
+        end_date.pack(pady=5)
+
+        ttk.Label(filter_window, text="Transaction Type:").pack(pady=5)
+        type_var = tk.StringVar()
+        type_combo = ttk.Combobox(filter_window, textvariable=type_var,
+                                  values=["All", "Order Payment"] + expense_types)
+        type_combo.pack(pady=5)
+        type_combo.set("All")
+
+        def apply_filter():
+            start = start_date.get_date()
+            end = end_date.get_date()
+            trans_type = type_var.get()
+
+            for item in transaction_table.get_children():
+                transaction_table.delete(item)
+
+            data = load_financial_data()
+            for transaction in data:
+                trans_date = datetime.strptime(transaction[0], "%Y-%m-%d %H:%M:%S").date()
+                if start <= trans_date <= end:
+                    if trans_type == "All" or trans_type == transaction[1]:
+                        transaction_table.insert('', 'end', values=transaction)
+
+            filter_window.destroy()
+
+        ttk.Button(filter_window, text="Apply Filter", command=apply_filter).pack(pady=20)
+
     root = ThemedTk(theme="arc")
     root.title("Accounts & Financial Management")
     root.geometry("1024x700")
@@ -4230,6 +4514,14 @@ def accounts_management_gui(user_role=""):
     table_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
     table_frame.grid_columnconfigure(0, weight=1)
     table_frame.grid_rowconfigure(0, weight=1)
+
+    # Add these buttons to the table_frame
+    button_frame = ttk.Frame(table_frame)
+    button_frame.grid(row=1, column=0, sticky="ew", pady=5)
+
+    ttk.Button(button_frame, text="Print Selected", command=print_transaction).pack(side=tk.LEFT, padx=5)
+    ttk.Button(button_frame, text="Export to PDF", command=export_to_pdf).pack(side=tk.LEFT, padx=5)
+    ttk.Button(button_frame, text="Filter", command=filter_transactions).pack(side=tk.LEFT, padx=5)
 
     table_container = ttk.Frame(table_frame)
     table_container.grid(row=0, column=0, sticky="nsew")
