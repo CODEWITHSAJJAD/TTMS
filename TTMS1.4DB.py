@@ -1,20 +1,29 @@
-import sys
+import sys,csv,sqlite3
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import Table,SimpleDocTemplate, TableStyle
+from datetime import datetime, date
+from reportlab.lib import colors
+import tempfile
 import tkinter as tk
-from tkinter import messagebox, ttk
-
-import openpyxl
+from tkinter import messagebox,ttk,filedialog
 from tkcalendar import DateEntry
+from fpdf import FPDF
+import re
+import shutil
+import pandas as pd
 import os
-import sqlite3
 from matplotlib import pyplot as plt
 from ttkthemes import ThemedTk
 import datetime
 from datetime import datetime
+import openpyxl
 from tkinter import *
 import logging
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from PIL import Image, ImageTk
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Database configuration
 DATABASE_PATH = "TTMS.db"
@@ -145,7 +154,20 @@ def initialize_database():
                     Status TEXT,
                     FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID)
                 )
+            ''',
+            "LeaveManagement": '''
+                CREATE TABLE IF NOT EXISTS LeaveManagement (
+                    LeaveID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    DriverID INTEGER NOT NULL,
+                    StartDate DATE NOT NULL,
+                    EndDate DATE NOT NULL,
+                    LeaveType TEXT NOT NULL,
+                    Status TEXT NOT NULL,
+                    Reason TEXT,
+                    FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID)
+                )
             '''
+
         }
 
         # Create each table
@@ -170,6 +192,8 @@ def initialize_database():
 # Initialize database
 if not initialize_database():
     sys.exit(1)  # Exit if database initialization fails
+if not os.path.exists('exports'):
+    os.makedirs('exports')
 
 
 def authenticate_user(username, password):
@@ -324,7 +348,14 @@ def redirect_user(role, username):  # Add username parameter
     else:
         messagebox.showerror("Access Denied", "Role not recognized!")
 
-
+def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
 
 def admin_dashboard(user_type="Admin",username=None, login_window=None):
     import datetime
@@ -394,14 +425,7 @@ def admin_dashboard(user_type="Admin",username=None, login_window=None):
     header_frame = tk.Frame(main_frame, bg="#1a237e", height=150)
     header_frame.pack(fill=tk.X, side=tk.TOP)
 
-    def resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
+
 
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
@@ -567,14 +591,7 @@ def manager_dashboard(user_type="Manager",username=None, login_window=None):
     header_frame = tk.Frame(main_frame, bg="#1a237e", height=150)
     header_frame.pack(fill=tk.X, side=tk.TOP)
 
-    def resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
+
 
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
@@ -716,14 +733,7 @@ def accountant_dashboard(user_type="Accountant",username=None, login_window=None
     header_frame = tk.Frame(main_frame, bg="#1a237e", height=150)
     header_frame.pack(fill=tk.X, side=tk.TOP)
 
-    def resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
+
 
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
@@ -863,13 +873,7 @@ def dispatcher_dashboard(user_type="Dispatcher",username=None, login_window=None
     header_frame = tk.Frame(main_frame, bg="#1a237e", height=150)
     header_frame.pack(fill=tk.X, side=tk.TOP)
 
-    def resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
+
 
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
@@ -1034,7 +1038,7 @@ def driver_management_gui(user_role=""):
             messagebox.showerror("Error", f"Failed to record salary payment: {e}")
 
     def generate_salary_report():
-        """Generate monthly salary report"""
+        """Generate monthly salary report with enhanced GUI"""
         try:
             conn = sqlite3.connect('TTMS.db')
             cursor = conn.cursor()
@@ -1044,7 +1048,7 @@ def driver_management_gui(user_role=""):
 
             # Get salary payments for current month
             cursor.execute("""
-                SELECT * FROM SalaryHistory
+                SELECT Amount FROM SalaryHistory
                 WHERE strftime('%Y-%m', PaymentDate) = ?
             """, (current_month,))
             monthly_data = cursor.fetchall()
@@ -1054,22 +1058,58 @@ def driver_management_gui(user_role=""):
                 SELECT DriverID, Name FROM Drivers
                 WHERE Salary_Status = 'Unpaid'
             """)
-            unpaid_drivers = cursor.fetchall()
+            unpaid_reminders = cursor.fetchall()
 
-            # Generate report
-            report = f"Monthly Salary Report ({current_month})\n\n"
-            report += f"Total Payments: {len(monthly_data)}\n"
-            report += f"Total Amount: /-{sum(payment[1] for payment in monthly_data)}\n\n"
-
-            if unpaid_drivers:
-                report += "Unpaid Salary Reminders:\n"
-                for driver in unpaid_drivers:
-                    report += f"Unpaid salary for Driver {driver[1]} (ID: {driver[0]})\n"
-
+            # Close the database connection
             conn.close()
-            messagebox.showinfo("Salary Report", report)
+
+            # Enhanced visualization
+            report_window = ThemedTk(theme="arc")  # Modern theme
+            report_window.title(f"Salary Report - {current_month}")
+            report_window.geometry("600x400")
+
+            # Main frame
+            main_frame = ttk.Frame(report_window, padding="10")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+
+            # Header
+            ttk.Label(main_frame, text=f"Monthly Salary Report ({current_month})", font=("Helvetica", 14, "bold")).pack(
+                pady=10)
+
+            # Summary frame
+            summary_frame = ttk.LabelFrame(main_frame, text="Summary", padding="5")
+            summary_frame.pack(fill=tk.X, pady=5)
+
+            ttk.Label(summary_frame, text=f"Total Payments: {len(monthly_data)}", font=("Helvetica", 10)).pack()
+            # Then modify the sum calculation to:
+            ttk.Label(summary_frame, text=f"Total Amount: /-{sum(payment[0] for payment in monthly_data)}",
+                      font=("Helvetica", 10, "bold")).pack()
+
+            # Unpaid reminders
+            if unpaid_reminders:
+                reminder_frame = ttk.LabelFrame(main_frame, text="Unpaid Salary Reminders", padding="5")
+                reminder_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+                # Create scrollable text widget for reminders
+                reminder_text = tk.Text(reminder_frame, height=10, wrap=tk.WORD)
+                scrollbar = ttk.Scrollbar(reminder_frame, orient=tk.VERTICAL, command=reminder_text.yview)
+                reminder_text.configure(yscrollcommand=scrollbar.set)
+
+                reminder_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+                scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+                for reminder in unpaid_reminders:
+                    driver_id, driver_name = reminder  # Unpack the tuple
+                    reminder_text.insert(tk.END, f"• Unpaid salary for Driver {driver_name} (ID: {driver_id},Name: {driver_name})\n")
+                reminder_text.configure(state='disabled')
+
+            ttk.Button(main_frame, text="Close", command=report_window.destroy).pack(pady=10)
+
+            report_window.mainloop()
+
         except Exception as e:
             messagebox.showerror("Error", f"Failed to generate salary report: {e}")
+
 
     def track_driver_status():
         """Track driver availability and trip status"""
@@ -1088,32 +1128,241 @@ def driver_management_gui(user_role=""):
             # Get individual driver statistics
             cursor.execute("""
                 SELECT DriverID, Name, Status,
-                       SUM(CASE WHEN Status = 'Available' THEN 1 ELSE 0 END) as available_days,
-                       SUM(CASE WHEN Status = 'On Trip' THEN 1 ELSE 0 END) as trip_days,
-                       SUM(CASE WHEN Status = 'Off Duty' THEN 1 ELSE 0 END) as off_days
-                FROM Drivers
-                GROUP BY DriverID
+                    COUNT(CASE WHEN Status = 'Available' THEN 1 END) as available_days,
+                    COUNT(CASE WHEN Status = 'On Trip' THEN 1 END) as trip_days,
+                    COUNT(CASE WHEN Status IN ('Off Duty','On Leave') THEN 1 END) as off_days
+                FROM Drivers               
+                GROUP BY DriverID, Name
+
             """)
             driver_stats = cursor.fetchall()
 
-            # Generate report
-            report = "Driver Status Report\n\n"
-            report += "Current Status Summary:\n"
+            status_window = ThemedTk(theme="arc")
+            status_window.title("Driver Status Report")
+            status_window.geometry("700x500")
+
+            main_frame = ttk.Frame(status_window, padding="10")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+
+            # Header
+            ttk.Label(main_frame, text="Driver Status Report", font=("Helvetica", 14, "bold")).pack(pady=10)
+
+            # Status summary frame
+            summary_frame = ttk.LabelFrame(main_frame, text="Current Status Summary", padding="5")
+            summary_frame.pack(fill=tk.X, pady=5)
+
+            # Create status bars
             for status, count in status_counts.items():
-                report += f"{status}: {count} drivers\n"
+                frame = ttk.Frame(summary_frame)
+                frame.pack(fill=tk.X, pady=2)
+                ttk.Label(frame, text=f"{status}:", width=15).pack(side=tk.LEFT)
+                progress = ttk.Progressbar(frame, length=200, mode='determinate')
+                progress.pack(side=tk.LEFT, padx=5)
+                total_drivers = sum(status_counts.values())
+                progress['value'] = (count / total_drivers) * 100
+                ttk.Label(frame, text=f"{count} drivers").pack(side=tk.LEFT)
 
-            report += "\nDetailed Driver Statistics:\n"
-            for stat in driver_stats:
-                report += f"\nDriver {stat[1]} (ID: {stat[0]}):\n"
-                report += f"Available Days: {stat[3]}\n"
-                report += f"Trip Days: {stat[4]}\n"
-                report += f"Off Duty Days: {stat[5]}\n"
+            # Driver details section
+            details_frame = ttk.LabelFrame(main_frame, text="Detailed Driver Statistics", padding="5")
+            details_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
+            # Add scrollbars
+            tree_scroll_y = ttk.Scrollbar(details_frame, orient="vertical")
+            tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+
+            # Create treeview for driver details
+            tree = ttk.Treeview(details_frame, columns=("ID", "Name", "Available", "Trip", "Off"), show="headings",
+                                yscrollcommand=tree_scroll_y.set)
+            tree_scroll_y.config(command=tree.yview)
+
+            # Configure column headings and widths
+            column_widths = {"ID": 100, "Name": 150, "Available": 100, "Trip": 100, "Off": 100}
+            for col in tree["columns"]:
+                tree.heading(col, text=col)
+                tree.column(col, width=column_widths[col], anchor="center")  # Center align all columns
+
+            # Insert data
+            # Insert data
+            for driver in driver_stats:
+                tree.insert("", tk.END, values=(
+                    driver[0],  # DriverID
+                    driver[1],  # Name
+                    driver[3],  # available_days
+                    driver[4],  # trip_days
+                    driver[5]  # off_days
+                ))
+
+            # Make the tree expand with window resizing
+            tree.pack(fill=tk.BOTH, expand=True)
+
+            # Configure weight of the details_frame columns
+            details_frame.columnconfigure(0, weight=1)
+            details_frame.rowconfigure(0, weight=1)
+
+            # Bind resize event to adjust column widths
+            def on_window_resize(event):
+                window_width = event.width
+                for col in tree["columns"]:
+                    tree.column(col, width=int(window_width * column_widths[col] / sum(column_widths.values())))
+
+            status_window.bind("<Configure>", on_window_resize)
+
+            ttk.Button(main_frame, text="Close", command=status_window.destroy).pack(pady=10)
+
+            status_window.mainloop()
             conn.close()
-            messagebox.showinfo("Driver Status Report", report)
-
         except Exception as e:
             messagebox.showerror("Error", f"Failed to generate status report: {e}")
+
+    def manage_driver_leave():
+        """Manage driver leave requests and tracking"""
+        try:
+            conn = sqlite3.connect('TTMS.db')
+            cursor = conn.cursor()
+
+
+            # Create leave management window
+            leave_window = ThemedTk(theme="arc")
+            leave_window.title("Leave Management")
+            leave_window.geometry("800x600")
+
+            main_frame = ttk.Frame(leave_window, padding="10")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+
+            # Leave request form
+            form_frame = ttk.LabelFrame(main_frame, text="Leave Request Form", padding="10")
+            form_frame.pack(fill=tk.X, pady=5)
+
+            # Form fields
+            ttk.Label(form_frame, text="Driver ID:").grid(row=0, column=0, padx=5, pady=5)
+            driver_id_entry = ttk.Entry(form_frame)
+            driver_id_entry.grid(row=0, column=1, padx=5, pady=5)
+
+            ttk.Label(form_frame, text="Start Date:").grid(row=0, column=2, padx=5, pady=5)
+            start_date = DateEntry(form_frame, width=19, background='darkblue',foreground='white', borderwidth=2, date_pattern='yyyy-mm-dd')
+            start_date.grid(row=0, column=3, padx=5, pady=5)
+
+            ttk.Label(form_frame, text="End Date:").grid(row=1, column=2, padx=5, pady=5)
+            end_date = DateEntry(form_frame, width=19, background='darkblue',foreground='white', borderwidth=2, date_pattern='yyyy-mm-dd')
+            end_date.grid(row=1, column=3, padx=5, pady=5)
+
+            ttk.Label(form_frame, text="Leave Type:").grid(row=1, column=0, padx=5, pady=5)
+            leave_type = ttk.Combobox(form_frame, values=["Off Duty","Sick Leave", "Annual Leave", "Emergency Leave"])
+            leave_type.grid(row=1, column=1, padx=5, pady=5)
+
+            ttk.Label(form_frame, text="Reason:").grid(row=2, column=0, padx=5, pady=5)
+            reason_entry = ttk.Entry(form_frame, width=50)
+            reason_entry.grid(row=2, column=1, columnspan=3, padx=5, pady=5)
+
+            def submit_leave_request():
+                """Submit new leave request"""
+                try:
+                    cursor.execute('''
+                                    INSERT INTO LeaveManagement 
+                                    (DriverID, StartDate, EndDate, LeaveType, Status, Reason)
+                                    VALUES (?, ?, ?, ?, ?, ?)
+                                ''', (
+                        driver_id_entry.get(),
+                        start_date.get(),
+                        end_date.get(),
+                        leave_type.get(),
+                        "Pending",
+                        reason_entry.get()
+                    ))
+                    conn.commit()
+                    messagebox.showinfo("Success", "Leave request submitted successfully!")
+                    refresh_leave_table()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to submit leave request: {e}")
+            ttk.Button(form_frame, text="Submit Request", command=submit_leave_request).grid(row=3, column=1, columnspan=2, pady=10)
+
+            # Leave requests table
+            table_frame = ttk.LabelFrame(main_frame, text="Leave Requests", padding="5")
+            table_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+            columns = ("Driver ID", "Start Date", "End Date", "Leave Type", "Status", "Reason")
+            leave_table = ttk.Treeview(table_frame, columns=columns, show='headings')
+
+            for col in columns:
+                leave_table.heading(col, text=col,anchor='center')
+                leave_table.column(col, width=100,anchor='center')
+
+            def refresh_leave_table():
+                """Refresh the leave requests table"""
+                leave_table.delete(*leave_table.get_children())
+                cursor.execute(
+                    'SELECT DriverID, StartDate, EndDate, LeaveType, Status, Reason FROM LeaveManagement')
+                for row in cursor.fetchall():
+                    leave_table.insert("", "end", values=row)
+
+            def approve_leave():
+                """Approve selected leave request"""
+                selected = leave_table.selection()
+                if not selected:
+                    messagebox.showerror("Error", "No request selected!")
+                    return
+
+                item = leave_table.item(selected[0])
+                driver_id = item['values'][0]
+
+                # Update leave status
+                cursor.execute('''
+                                UPDATE LeaveManagement 
+                                SET Status = 'Approved' 
+                                WHERE DriverID = ?
+                            ''', (driver_id,))
+
+                # Update driver status
+                cursor.execute('''
+                                UPDATE drivers 
+                                SET Status = 'On Leave' 
+                                WHERE DriverID = ?
+                            ''', (driver_id,))
+
+                conn.commit()
+                refresh_leave_table()
+                messagebox.showinfo("Success", "Leave request approved!")
+
+            def reject_leave():
+                """Reject selected leave request"""
+                selected = leave_table.selection()
+                if not selected:
+                    messagebox.showerror("Error", "No request selected!")
+                    return
+                item = leave_table.item(selected[0])
+                driver_id = item['values'][0]
+
+                cursor.execute('''
+                                                UPDATE LeaveManagement 
+                                                SET Status = 'Rejected' 
+                                                WHERE DriverID = ?
+                                            ''', (driver_id,))
+                conn.commit()
+                refresh_leave_table()
+                messagebox.showinfo("Success", "Leave request rejected!")
+
+            # Action buttons
+            button_frame = ttk.Frame(table_frame)
+            button_frame.pack(fill=tk.X, pady=5)
+            ttk.Button(button_frame, text="Approve", command=approve_leave).pack(side=tk.LEFT, padx=5)
+            ttk.Button(button_frame, text="Reject", command=reject_leave ).pack(side=tk.LEFT, padx=5)
+            ttk.Button(button_frame, text="Refresh", command=refresh_leave_table).pack(side=tk.LEFT, padx=5)
+
+            # Add scrollbars
+            y_scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=leave_table.yview)
+            leave_table.configure(yscrollcommand=y_scrollbar.set)
+
+            # Pack table and scrollbar
+            leave_table.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            # Initial load of leave requests
+            refresh_leave_table()
+
+            leave_window.mainloop()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open leave management: {e}")
 
     def update_driver(driver_id, updated_data):
         try:
@@ -1334,6 +1583,136 @@ def driver_management_gui(user_role=""):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to refresh data: {e}")
 
+    def export_reports(report_type):
+        """Export reports to Excel"""
+        try:
+            # Create exports directory if it doesn't exist
+            if not os.path.exists('exports'):
+                os.makedirs('exports')
+
+            conn = sqlite3.connect('TTMS.db')
+
+            if report_type == "salary":
+                # Get salary data directly from database
+                query = """
+                    SELECT d.DriverID, d.Name, d.Salary, d.Salary_Status, 
+                           sh.PaymentDate, sh.Amount
+                    FROM Drivers d
+                    LEFT JOIN SalaryHistory sh ON d.DriverID = sh.DriverID
+                    WHERE strftime('%Y-%m', sh.PaymentDate) = strftime('%Y-%m', 'now')
+                """
+                df = pd.read_sql_query(query, conn)
+                filename = f"exports/salary_report_{datetime.now().strftime('%Y%m')}.xlsx"
+
+            elif report_type == "status":
+                # Get status data directly from database
+                query = """
+                    SELECT DriverID, Name, Status, Trip
+                    FROM Drivers
+                """
+                df = pd.read_sql_query(query, conn)
+                filename = f"exports/status_report_{datetime.now().strftime('%Y%m%d')}.xlsx"
+
+            conn.close()
+            df.to_excel(filename, index=False)
+            messagebox.showinfo("Success", f"Report exported to {filename}")
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export report: {e}")
+
+    def backup_database():
+        """Create backup of the driver database"""
+        try:
+            # Create backup directory if it doesn't exist
+            if not os.path.exists('backup'):
+                os.makedirs('backup')
+
+            # Use the correct database path and keep SQLite format
+            database_path = 'TTMS.db'
+            backup_path = f"backup/TTMS_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            shutil.copy2(database_path, backup_path)
+            messagebox.showinfo("Success", f"Database backed up to {backup_path}")
+        except Exception as e:
+            messagebox.showerror("Backup Error", f"Failed to backup database: {e}")
+
+    def calculate_driver_performance():
+        """Calculate driver performance metrics and display them"""
+        try:
+            conn = sqlite3.connect('TTMS.db')
+            cursor = conn.cursor()
+            performance_data = {}
+            on_time_deliveries=0
+
+            cursor.execute("SELECT DriverID,Name,Trip FROM Drivers")
+            rows = cursor.fetchall()
+            for row in rows:
+                driver_id = row[0]
+                name = row[1]
+                trips = row[2]
+                performance_score = (trips * 0.6) + (on_time_deliveries * 0.4)
+                performance_data[driver_id] = {
+                    "name": name,
+                    "trips": trips,
+                    "on_time": on_time_deliveries,
+                    "score": performance_score
+                }
+
+
+            # Create a new window to display performance data
+            performance_window = tk.Toplevel()
+            performance_window.title("Driver Performance Report")
+            performance_window.geometry("600x400")
+
+            # Create a frame to contain the treeview and scrollbar
+            frame = ttk.Frame(performance_window)
+            frame.pack(fill="both", expand=True)
+
+            # Create a treeview to display the data
+            tree = ttk.Treeview(frame, columns=("ID", "Name", "Trips", "On-Time", "Score"),show="headings")
+
+            # Define column headings and center alignment
+            columns = ["ID", "Name", "Trips", "On-Time", "Score"]
+            column_widths = [80, 150, 100, 150, 120]  # Adjust these values as needed
+
+            for col, width in zip(columns, column_widths):
+                tree.heading(col, text=col)
+                tree.column(col, width=width, anchor="center")
+
+            # Insert data into treeview
+            for driver_id, data in performance_data.items():
+                tree.insert("", "end", values=(
+                    driver_id,
+                    data["name"],
+                    data["trips"],
+                    data["on_time"],
+                    f"{data['score']:.2f}"
+                ))
+
+            # Add scrollbar
+            scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=scrollbar.set)
+
+            # Configure weight for auto-resize
+            frame.columnconfigure(0, weight=1)
+            frame.rowconfigure(0, weight=1)
+
+            # Grid layout for better resizing
+            tree.grid(row=0, column=0, sticky="nsew")
+            scrollbar.grid(row=0, column=1, sticky="ns")
+
+            # Bind resize event to window
+            def on_resize(event):
+                # Calculate new column widths
+                total_width = tree.winfo_width()
+                for col, base_width in zip(columns, column_widths):
+                    ratio = base_width / sum(column_widths)
+                    new_width = int(total_width * ratio)
+                    tree.column(col, width=new_width)
+
+            performance_window.bind("<Configure>", on_resize)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to calculate performance: {e}")
+
     # Create themed root window
     root = ThemedTk(theme="arc")
     root.title("Driver Management System")
@@ -1348,15 +1727,6 @@ def driver_management_gui(user_role=""):
     header_frame = tk.Frame(root, bg="#1a237e", height=100)
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
-
-    def resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
 
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
@@ -1408,7 +1778,6 @@ def driver_management_gui(user_role=""):
         fg="white",
     ).pack(side=tk.LEFT, padx=20)
 
-
     # Main container
     main_container = ttk.Frame(root, padding="10")
     main_container.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
@@ -1428,23 +1797,32 @@ def driver_management_gui(user_role=""):
     form_frame = ttk.LabelFrame(main_container, text="Driver Information", padding="10")
     form_frame.pack(fill=tk.X, pady=(0, 10))
 
-    # Define form fields in a more organized way (2 columns)
+    # Define form fields in 4 columns (to fit all 12 fields with 3 per column)
     form_fields = [
-        # Left column
+        # First column
         [("Driver ID:", id_entry := ttk.Entry(form_frame)),
          ("Name:", name_entry := ttk.Entry(form_frame)),
-         ("CNIC:", cnic_entry := ttk.Entry(form_frame)),
-         ("License Expiry:", license_entry := DateEntry(form_frame, width=19, background='darkblue',foreground='white', borderwidth=2,date_pattern='yyyy-mm-dd')),
+         ("CNIC:", cnic_entry := ttk.Entry(form_frame))],
+
+        # Second column
+        [("License Expiry:",
+          license_entry := DateEntry(form_frame, width=18, background='darkblue', foreground='white', borderwidth=2,
+                                     date_pattern='yyyy-mm-dd')),
          ("Contact:", contact_entry := ttk.Entry(form_frame)),
          ("Address:", address_entry := ttk.Entry(form_frame))],
 
-        # Right column
+        # Third column
         [("Salary:", salary_entry := ttk.Entry(form_frame)),
-         ("Salary Status:", salary_status_combo := ttk.Combobox(form_frame, values=["Paid", "Unpaid"])),
-         ("Joining Date:", joining_date_entry := DateEntry(form_frame, width=19, background='darkblue',foreground='white', borderwidth=2,date_pattern='yyyy-mm-dd')),
-         ("Resigning Date:", resigning_date_entry := ttk.Entry(form_frame)),
+         ("Salary Status:", salary_status_combo := ttk.Combobox(form_frame, width=18, values=["Paid", "Unpaid"])),
+         ("Joining Date:",
+          joining_date_entry := DateEntry(form_frame, width=18, background='darkblue', foreground='white',
+                                          borderwidth=2, date_pattern='yyyy-mm-dd'))],
+
+        # Fourth column
+        [("Resigning Date:", resigning_date_entry := ttk.Entry(form_frame)),
          ("Trip Count:", trip_count_entry := ttk.Entry(form_frame)),
-         ("Trip Status:", trip_status_combo := ttk.Combobox(form_frame, values=["Available", "On Trip", "Off Duty"]))]
+         ("Trip Status:",
+          trip_status_combo := ttk.Combobox(form_frame, width=18, values=["Available", "On Trip", "Off Duty"]))]
     ]
 
     # Create the grid layout
@@ -1467,37 +1845,56 @@ def driver_management_gui(user_role=""):
                 sticky='w'
             )
 
-    # Buttons frame
     buttons_frame = ttk.Frame(main_container)
     buttons_frame.pack(fill=tk.X, pady=(0, 10))
+
+    # Create sub-frames for each row (4 buttons per row)
+    buttons_per_row = 9
     buttons = [
         ("Add Driver", add_driver),
         ("Update Driver", update_selected_driver),
         ("Delete Driver", delete_selected_driver),
         ("Check License Expiry", check_license_expiry),
         ("Salary Report", generate_salary_report),
+        ("Manage Leave", manage_driver_leave),
         ("Track Status", track_driver_status),
         ("Record Payment", lambda: track_salary_payment(id_entry.get(), float(salary_entry.get()))),
-        ("Refresh",refresh_treeview),
+        ("Refresh", refresh_treeview),
+        ("Export Reports", lambda: export_reports("salary")),
+        ("Backup Database", backup_database),
+        ("Performance Report", calculate_driver_performance)
     ]
-    for text, command in buttons:
-        ttk.Button(buttons_frame, text=text, command=command).pack(side=tk.LEFT, padx=5)
-    # buttons.extend([
-    #
-    # ])
+
+    # Calculate number of rows needed
+    num_rows = (len(buttons) + buttons_per_row - 1) // buttons_per_row
+
+    # Create buttons row by row
+    for row in range(num_rows):
+        row_frame = ttk.Frame(buttons_frame)
+        row_frame.pack(fill=tk.X, pady=2)
+
+        # Calculate start and end indices for current row
+        start_idx = row * buttons_per_row
+        end_idx = min(start_idx + buttons_per_row, len(buttons))
+
+        # Create buttons for current row
+        for text, command in buttons[start_idx:end_idx]:
+            btn = ttk.Button(row_frame, text=text, command=command)
+            btn.pack(side=tk.LEFT, padx=3, fill=tk.X)
+
     # First, create and pack the footer frame
     # Table frame
     # Then create and pack the table frame
     table_frame = ttk.Frame(main_container)
     table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-
     # Create a frame for the table and scrollbars
     table_scroll_frame = ttk.Frame(table_frame)
     table_scroll_frame.pack(fill=tk.BOTH, expand=True)
     # Treeview and scrollbars configuration remain the same
-    columns = ("Index", "ID", "Name", "CNIC", "License Expiry", "Address", "Contact",
-               "Salary", "Salary Status", "Joining Date", "Resigning Date", "Trip Count", "Trip Status")
+    columns = (
+    "Index", "ID", "Name", "CNIC", "License Expiry", "Address", "Contact", "Salary", "Salary Status", "Joining Date",
+    "Resigning Date", "Trip Count", "Trip Status")
     driver_table = ttk.Treeview(table_scroll_frame, columns=columns, show='headings', height=15)
 
     # Configure column headings and widths
@@ -1612,37 +2009,33 @@ def truck_management_gui(user_role=""):
 
     def track_maintenance_expense(truck_id, amount, description, date=None):
         """Record maintenance expense for a truck"""
+        conn = None
         try:
-            conn = sqlite3.connect('TTMS.db')
+            conn = sqlite3.connect('TTMS.db', timeout=30)  # Increased timeout
             cursor = conn.cursor()
 
-            # Create MaintenanceHistory table if it doesn't exist
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS MaintenanceHistory (
-                    TruckID TEXT,
-                    Amount REAL,
-                    Description TEXT,
-                    Date TEXT,
-                    Odometer INTEGER
-                )
-            """)
-
             date = date or datetime.now().strftime("%Y-%m-%d")
-            current_odometer = get_current_odometer(truck_id)
 
+            # Get current odometer reading
+            cursor.execute("SELECT Odometer FROM Trucks WHERE TruckID = ?", (truck_id,))
+            result = cursor.fetchone()
+            current_odometer = result[0] if result else 0
+
+            # Insert maintenance record
             cursor.execute("""
                 INSERT INTO MaintenanceHistory (TruckID, Amount, Description, Date, Odometer)
                 VALUES (?, ?, ?, ?, ?)
-        """, (truck_id, amount, description, date, current_odometer))
-
-            # Reset odometer after maintenance
-            reset_odometer(truck_id)
+            """, (truck_id, amount, description, date, current_odometer))
 
             conn.commit()
-            conn.close()
             messagebox.showinfo("Success", "Maintenance expense recorded successfully!")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to record maintenance expense: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+
 
     def track_fuel_expense(truck_id, amount, liters, date=None):
         """Record fuel expense for a truck"""
@@ -1698,16 +2091,18 @@ def truck_management_gui(user_role=""):
 
     def reset_odometer(truck_id):
         """Reset odometer after maintenance"""
+        conn = None
         try:
-            conn = sqlite3.connect('TTMS.db')
+            conn = sqlite3.connect('TTMS.db', timeout=20)  # Add timeout
             cursor = conn.cursor()
-
             cursor.execute("UPDATE Trucks SET Odometer = 0 WHERE TruckID = ?", (truck_id,))
-
+            messagebox.showinfo("Success",f"Odometer has been reset for truck:,{truck_id}")
             conn.commit()
-            conn.close()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to reset odometer: {e}")
+        finally:
+            if conn:
+                conn.close()
 
     def get_current_odometer(truck_id):
         """Get current odometer reading for a truck"""
@@ -1838,6 +2233,126 @@ def truck_management_gui(user_role=""):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to delete truck: {e}")
 
+
+    def generate_maintenance_report():
+        """Generate a maintenance expense report for a date range using database"""
+        try:
+            # Connect to the SQLite database
+            conn = sqlite3.connect('TTMS.db')
+            cursor = conn.cursor()
+
+            # Prepare SQL query to fetch maintenance data
+            query = """
+            SELECT MaintenanceID, Amount, Description, Date, Odometer
+            FROM MaintenanceHistory
+            """
+            cursor.execute(query)
+
+            # Fetch all records within the date range
+            report_data = cursor.fetchall()
+            total_expense = sum(item[1] for item in report_data)  # Calculate total expense
+
+            # Create report window
+            report_window = tk.Toplevel()
+            report_window.title("Maintenance Report")
+            report_window.geometry("800x600")
+
+            # Create a frame to hold the tree and scrollbars
+            frame = ttk.Frame(report_window)
+            frame.pack(fill=tk.BOTH, expand=True)
+
+            # Create the scrollbars
+            y_scroll = ttk.Scrollbar(frame, orient=tk.VERTICAL)
+            x_scroll = ttk.Scrollbar(frame, orient=tk.HORIZONTAL)
+
+            # Add report content
+            report_tree = ttk.Treeview(frame, columns=("ID", "Amount", "Description", "Date", "Odometer"),
+                                       yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
+
+            # Configure scrollbars
+            y_scroll.config(command=report_tree.yview)
+            x_scroll.config(command=report_tree.xview)
+
+            # Hide the default tree column
+            report_tree['show'] = 'headings'
+
+            # Configure columns and headings with center alignment
+            columns = ["ID", "Amount", "Description", "Date", "Odometer"]
+            for col in columns:
+                report_tree.heading(col, text=col)
+                report_tree.column(col, anchor='center', width=100)  # Set default width to 100
+
+            # Insert data
+            for item in report_data:
+                report_tree.insert("", "end", values=item)
+
+            # Layout with grid
+            report_tree.grid(row=0, column=0, sticky='nsew')
+            y_scroll.grid(row=0, column=1, sticky='ns')
+            x_scroll.grid(row=1, column=0, sticky='ew')
+
+            # Configure grid weights
+            frame.grid_rowconfigure(0, weight=1)
+            frame.grid_columnconfigure(0, weight=1)
+
+            tk.Label(report_window,
+                     text=f"Total Maintenance Expense: ${total_expense:.2f}",
+                     font=("Helvetica", 12, "bold")).pack(pady=10)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to generate report: {e}")
+        finally:
+            # Close the database connection
+            conn.close()
+
+    def export_to_csv():
+        """Export truck data to CSV file"""
+        try:
+            trucks = load_trucks()
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                filetypes=[("CSV files", "*.csv")]
+            )
+
+            if filename:
+                with open(filename, 'w', newline='') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow(["ID", "Model", "Status", "Permit","Weight Capacity(KG)", "Maintenance Schedule", "Odometer"])
+                    writer.writerows(trucks)
+                messagebox.showinfo("Success", "Data exported successfully!")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export data: {e}")
+
+    def schedule_maintenance_check():
+        """Check for upcoming maintenance based on schedule"""
+        try:
+            trucks = load_trucks()
+            upcoming_maintenance = []
+
+            for truck in trucks:
+                try:
+                    maintenance_date = datetime.strptime(truck[5], "%Y-%m-%d")
+                    current_date = datetime.now()
+                    days_until = (maintenance_date - current_date).days
+
+                    if 0 <= days_until <= 7:
+                        upcoming_maintenance.append((truck[0], days_until))
+
+                except Exception as e:
+                    messagebox.showerror("Error", f"Error processing truck {truck[0]}: {str(e)}")
+
+            if upcoming_maintenance:
+                message = "Upcoming Maintenance:\n\n"
+                for truck_id, days in upcoming_maintenance:
+                    message += f"Truck {truck_id}: {days} days remaining\n"
+                messagebox.showwarning("Maintenance Alert", message)
+            else:
+                messagebox.showinfo("Maintenance Status", "No upcoming maintenance scheduled for next 7 days")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to check maintenance schedule: {e}")
+
     root = ThemedTk(theme="arc")  # Using themed Tk for better appearance
     root.title("Truck Management System")
     root.geometry("1000x700")
@@ -1852,19 +2367,8 @@ def truck_management_gui(user_role=""):
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
 
-    def resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
-
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
-
-
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -1920,9 +2424,7 @@ def truck_management_gui(user_role=""):
     # Search frame
     search_frame = ttk.LabelFrame(main_container, text="Search", padding="5")
     search_frame.pack(fill=tk.X, pady=(0, 10))
-    search_criteria = ttk.Combobox(search_frame,
-                                   values=["ID", "Model", "Status", "Permit","Capacity"],
-                                   width=15)
+    search_criteria = ttk.Combobox(search_frame, values=["ID", "Model", "Status", "Permit", "Capacity"], width=15)
     search_criteria.set("ID")
     search_criteria.pack(side=tk.LEFT, padx=5)
 
@@ -1951,10 +2453,12 @@ def truck_management_gui(user_role=""):
     form_fields = [
         ("Truck ID:", id_entry := ttk.Entry(truck_info_frame)),
         ("Model:", model_entry := ttk.Entry(truck_info_frame)),
-        ("Status:", status_combo := ttk.Combobox(truck_info_frame,
+        ("Status:", status_combo := ttk.Combobox(truck_info_frame, width=18,
                                                  values=["Operational", "Under Maintenance", "Retired"])),
         ("Permit Number:", permit_entry := ttk.Entry(truck_info_frame)),
-        ("Maintenance Schedule:", maintenance_entry := DateEntry(truck_info_frame, width=19, background='darkblue',foreground='white', borderwidth=2,date_pattern='yyyy-mm-dd')),
+        ("Maintenance Schedule:",
+         maintenance_entry := DateEntry(truck_info_frame, width=18, background='darkblue', foreground='white',
+                                        borderwidth=2, date_pattern='yyyy-mm-dd')),
         ("Weight Capacity(KG):", capacity_entry := ttk.Entry(truck_info_frame))
     ]
 
@@ -1966,7 +2470,9 @@ def truck_management_gui(user_role=""):
     maintenance_fields = [
         ("Amount:", maintenance_amount_entry := ttk.Entry(maintenance_frame)),
         ("Description:", maintenance_desc_entry := ttk.Entry(maintenance_frame)),
-        ("Date:", maintenance_date_entry := DateEntry(maintenance_frame, width=19, background='darkblue',foreground='white', borderwidth=2,date_pattern='yyyy-mm-dd')),
+        ("Date:",
+         maintenance_date_entry := DateEntry(maintenance_frame, width=18, background='darkblue', foreground='white',
+                                             borderwidth=2, date_pattern='yyyy-mm-dd')),
     ]
 
     for i, (label, widget) in enumerate(maintenance_fields):
@@ -1981,13 +2487,20 @@ def truck_management_gui(user_role=""):
                    float(maintenance_amount_entry.get()),
                    maintenance_desc_entry.get(),
                    maintenance_date_entry.get() or None
-               )).grid(row=len(maintenance_fields), column=0, columnspan=2, pady=5)
+               )).grid(row=len(maintenance_fields), column=0, columnspan=1,padx=1 ,pady=5)
+
+    ttk.Button(maintenance_frame,
+               text="Reset Odometer",
+               command=lambda: reset_odometer(id_entry.get())
+               ).grid(row=len(maintenance_fields), column=1, columnspan=2,padx=2, pady=5)
 
     # Fuel Record fields
     fuel_fields = [
         ("Amount:", fuel_amount_entry := ttk.Entry(fuel_frame)),
         ("Liters:", fuel_liters_entry := ttk.Entry(fuel_frame)),
-        ("Date:", fuel_date_entry := DateEntry(fuel_frame, width=19, background='darkblue',foreground='white', borderwidth=2,date_pattern='yyyy-mm-dd')),
+        ("Date:",
+         fuel_date_entry := DateEntry(fuel_frame, width=18, background='darkblue', foreground='white', borderwidth=2,
+                                      date_pattern='yyyy-mm-dd')),
     ]
 
     for i, (label, widget) in enumerate(fuel_fields):
@@ -2013,6 +2526,9 @@ def truck_management_gui(user_role=""):
         ("Clear Form", lambda: clear_form()),
         ("Update Odometer", lambda: update_odometer(id_entry.get(), 0)),
         ("Refresh", refresh_treeview),
+        ("Maintenance Report", lambda: generate_maintenance_report()),
+        ("Export Data", export_to_csv),
+        ("Check Maintenance", schedule_maintenance_check),
     ]:
         ttk.Button(buttons_frame, text=text, command=command).pack(side=tk.LEFT, padx=5)
 
@@ -2030,13 +2546,13 @@ def truck_management_gui(user_role=""):
 
     # Configure column headings and widths
     for col in columns:
-        truck_table.heading(col, text=col,anchor='center')
-        truck_table.column(col, width=150,anchor='center')
+        truck_table.heading(col, text=col, anchor='center')
+        truck_table.column(col, width=150, anchor='center')
     truck_table.bind('<<TreeviewSelect>>', on_select)
     # Add vertical scrollbar
     y_scrollbar = ttk.Scrollbar(table_scroll_frame, orient=tk.VERTICAL, command=truck_table.yview)
     truck_table.configure(yscrollcommand=y_scrollbar.set)
-    #add horizontal scrollbar
+    # add horizontal scrollbar
     x_scrollbar = ttk.Scrollbar(table_scroll_frame, orient=tk.HORIZONTAL, command=truck_table.xview)
     truck_table.configure(xscrollcommand=x_scrollbar.set)
 
@@ -2340,14 +2856,7 @@ def order_management_gui(user_role=""):
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
 
-    def resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
+
 
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
@@ -3133,14 +3642,7 @@ def dispatch_management_gui(user_role=""):
     header_frame = tk.Frame(root, bg="#1a237e", height=100)  # Reduced from 150 to 100
     header_frame.grid(row=0, column=0, sticky="ew")
 
-    def resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
+
 
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
@@ -3528,14 +4030,7 @@ def accounts_management_gui(user_role=""):
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
 
-    def resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
+
 
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
@@ -3763,6 +4258,58 @@ def reports_analytics_gui(user_role=""):
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to export data: {e}")
+    def export_to_pdf(data, filename):
+        try:
+            pdf = FPDF(format='A4')  # Explicitly specify format
+            pdf.set_auto_page_break(auto=True, margin=15)
+            pdf.add_page()
+
+            # Set font before writing
+            pdf.set_font("helvetica", size=11)
+
+            # Add headers
+            headers = list(data[0].keys())
+            for header in headers:
+                pdf.cell(40, 10, str(header), 1)
+            pdf.ln()
+
+            # Add data
+            for row in data:
+                for key in headers:
+                    pdf.cell(40, 10, str(row[key]), 1)
+                pdf.ln()
+
+            # Save with timestamp
+            export_filename = f"{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            pdf.output(export_filename)
+            messagebox.showinfo("Success", f"PDF exported successfully as {export_filename}!")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export PDF: {e}")
+
+    def export_to_csv(data, filename):
+        try:
+            import csv
+            export_filename = f"{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+            with open(export_filename, 'w', newline='') as csvfile:
+                if not data:
+                    messagebox.showinfo("Warning", "No data to export!")
+                    return
+
+                # Write headers
+                fieldnames = list(data[0].keys())
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+
+                # Write data
+                for row in data:
+                    writer.writerow(row)
+
+            messagebox.showinfo("Success", f"Data exported successfully to {export_filename}!")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export CSV: {e}")
 
     def generate_fleet_report():
         try:
@@ -3975,14 +4522,7 @@ def reports_analytics_gui(user_role=""):
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
 
-    def resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
+
 
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
@@ -4043,7 +4583,6 @@ def reports_analytics_gui(user_role=""):
     main_container.grid_columnconfigure(1, weight=1)  # Make display panel expand
     main_container.grid_rowconfigure(0, weight=1)  # Make container expand vertically
 
-    # Left panel for controls
     control_panel = ttk.Frame(main_container)
     control_panel.grid(row=0, column=0, sticky="ns", padx=5)
 
@@ -4052,14 +4591,33 @@ def reports_analytics_gui(user_role=""):
         ("Generate Fleet Performance", generate_fleet_report),
         ("Generate Driver Performance", generate_driver_performance),
         ("Generate Financial Summary", generate_financial_summary),
-        ("Export Fleet Data", lambda: export_to_excel(generate_fleet_report(), "fleet_report")),
-        ("Export Driver Data", lambda: export_to_excel(generate_driver_performance(), "driver_report")),
-        ("Export Financial Data", lambda: export_to_excel(generate_financial_summary(), "financial_report"))
+        ("Export Fleet Data", lambda: export_data(generate_fleet_report(), "fleet_report")),
+        ("Export Driver Data", lambda: export_data(generate_driver_performance(), "driver_report")),
+        ("Export Financial Data", lambda: export_data(generate_financial_summary(), "financial_report"))
     ]
 
     for idx, (text, command) in enumerate(buttons):
         ttk.Button(control_panel, text=text, command=command).grid(
             row=idx, column=0, pady=5, padx=5, sticky="ew")
+
+    export_frame = ttk.LabelFrame(control_panel, text="Export Options")
+    export_frame.grid(row=len(buttons) + 1, column=0, pady=10, padx=5, sticky="ew")
+
+    export_format = tk.StringVar(value="excel")
+    ttk.Radiobutton(export_frame, text="Excel", variable=export_format, value="excel").pack()
+    ttk.Radiobutton(export_frame, text="PDF", variable=export_format, value="pdf").pack()
+    ttk.Radiobutton(export_frame, text="CSV", variable=export_format, value="csv").pack()
+
+    # Modify export button command
+    def export_data(data, filename):
+        format_type = export_format.get()
+        if format_type == "excel":
+            export_to_excel(data, filename)
+        elif format_type == "pdf":
+            export_to_pdf(data, filename)
+        elif format_type == "csv":
+
+            export_to_csv(data, filename)
 
     # Right panel for charts and data display
     display_panel = ttk.Frame(main_container)
@@ -4303,14 +4861,7 @@ def user_management_gui():
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
 
-    def resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
+
 
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
