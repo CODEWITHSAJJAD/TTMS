@@ -1713,6 +1713,12 @@ def driver_management_gui(user_role=""):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to calculate performance: {e}")
 
+    def clear_form():
+        for widget in (id_entry,name_entry,cnic_entry,license_entry,contact_entry,address_entry,joining_date_entry,resigning_date_entry,trip_count_entry,salary_entry):
+            widget.delete(0, tk.END)
+        salary_status_combo.set("")
+        trip_status_combo.set("")
+
     # Create themed root window
     root = ThemedTk(theme="arc")
     root.title("Driver Management System")
@@ -1860,6 +1866,7 @@ def driver_management_gui(user_role=""):
         ("Track Status", track_driver_status),
         ("Record Payment", lambda: track_salary_payment(id_entry.get(), float(salary_entry.get()))),
         ("Refresh", refresh_treeview),
+        ("Clear", clear_form),
         ("Export Reports", lambda: export_reports("salary")),
         ("Backup Database", backup_database),
         ("Performance Report", calculate_driver_performance)
@@ -2583,6 +2590,7 @@ def truck_management_gui(user_role=""):
 
 
 def order_management_gui(user_role=""):
+    import datetime
     def go_back():
         root.destroy()
         if user_role == "Admin":
@@ -2841,6 +2849,333 @@ def order_management_gui(user_role=""):
         status_combo.set("")
         payment_combo.set("")
 
+    def export_to_pdf():
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import letter, landscape
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+            from reportlab.lib.units import inch
+            from datetime import datetime
+
+            orders = load_orders()
+            if not orders:
+                messagebox.showwarning("Warning", "No data to export")
+                return
+
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"exports/ordersdata_{timestamp}.pdf"
+
+            page_size = landscape(letter)
+
+            doc = SimpleDocTemplate(filename,
+                                    pagesize=page_size,
+                                    leftMargin=0.25 * inch,
+                                    rightMargin=0.25 * inch,
+                                    topMargin=0.25 * inch,
+                                    bottomMargin=0.25 * inch)
+
+            elements = []
+
+            # Remove first column from headers
+            modified_columns = order_columns[1:]
+
+            # Create table data without first column
+            table_data = [modified_columns]
+            for order in orders:
+                table_data.append([str(x) for x in order[1:]])  # Skip first column
+
+            page_width = page_size[0] - (0.5 * inch)
+            num_columns = len(modified_columns)
+
+            # Adjust column widths to better fit content
+            col_widths = []
+            for i in range(num_columns):
+                max_width = max(len(str(row[i])) for row in table_data) * 10  # Increased multiplier from 7 to 10
+                min_width = 70  # Increased minimum width from 55 to 70
+                col_widths.append(min(max(max_width, min_width), page_width / num_columns))
+
+            table = Table(table_data, colWidths=col_widths, repeatRows=1)
+
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),  # Reduced font size from 9 to 8
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),  # Increased padding from 8 to 12
+                ('TOPPADDING', (0, 0), (-1, 0), 12),  # Added top padding
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('WORDWRAP', (0, 0), (-1, -1), True),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),  # Increased from 4 to 6
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6)  # Increased from 4 to 6
+            ]))
+
+            elements.append(table)
+            doc.build(elements)
+            messagebox.showinfo("Success", f"PDF exported successfully as {filename}!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export PDF: {e}")
+
+    def export_to_excel():
+        """Export order data to Excel with formatting"""
+        try:
+            from datetime import datetime
+
+            orders = load_orders()
+            if not orders:
+                messagebox.showwarning("Warning", "No data to export")
+                return
+
+            # Create filename with timestamp
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"exports/ordersdata_{timestamp}.xlsx"
+
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+
+            # Add headers (skip first column)
+            for col, header in enumerate(order_columns[1:], 1):
+                cell = sheet.cell(row=1, column=col)
+                cell.value = header
+                cell.font = openpyxl.styles.Font(bold=True)
+                cell.fill = openpyxl.styles.PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+
+            # Add data (skip first column)
+            for row, order in enumerate(orders, 2):
+                for col, value in enumerate(order[1:], 1):
+                    sheet.cell(row=row, column=col, value=value)
+
+            workbook.save(filename)
+            messagebox.showinfo("Success", f"Excel file exported successfully as {filename}!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export to Excel: {e}")
+
+    def calculate_statistics():
+        """Calculate and display comprehensive order statistics with visualization"""
+        try:
+            orders = load_orders()
+            if not orders:
+                messagebox.showwarning("Warning", "No data available")
+                return
+
+            # Calculate basic metrics
+            total_orders = len(orders)
+            total_amount = sum(float(order[12]) for order in orders if order[11])
+            pending_orders = len([o for o in orders if o[9] == "Pending"])
+            delivered_orders = len([o for o in orders if o[9] == "Delivered"])
+            avg_order_value = total_amount / total_orders if total_orders > 0 else 0
+            delivery_rate = (delivered_orders / total_orders * 100) if total_orders > 0 else 0
+
+            # Create statistics window
+            stats_window = tk.Toplevel(root)
+            stats_window.title("Order Statistics Dashboard")
+            stats_window.geometry("600x400")
+            stats_window.resizable(False, False)
+
+            # Style configuration
+            style = ttk.Style()
+            style.configure("Stats.TLabel", padding=5, font=('Helvetica', 10))
+
+            # Create main frame
+            main_frame = ttk.Frame(stats_window, padding="10")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+
+            # Statistics display
+            stats_frame = ttk.LabelFrame(main_frame, text="Key Metrics", padding="10")
+            stats_frame.pack(fill=tk.X, padx=5, pady=5)
+
+            metrics = [
+                ("Total Orders:", f"{total_orders:,}"),
+                ("Total Revenue:", f"/-{total_amount:,.2f}"),
+                ("Average Order Value:", f"/-{avg_order_value:,.2f}"),
+                ("Pending Orders:", f"{pending_orders:,}"),
+                ("Delivered Orders:", f"{delivered_orders:,}"),
+                ("Delivery Rate:", f"{delivery_rate:.1f}%")
+            ]
+
+            # Create grid layout for metrics
+            for i, (label, value) in enumerate(metrics):
+                row = i // 2
+                col = i % 2 * 2
+                ttk.Label(stats_frame, text=label, style="Stats.TLabel").grid(row=row, column=col, sticky='e', padx=5)
+                ttk.Label(stats_frame, text=value, style="Stats.TLabel").grid(row=row, column=col + 1, sticky='w',
+                                                                              padx=5)
+            export_frame = ttk.LabelFrame(main_frame, text="Export Options", padding="10")
+            export_frame.pack(fill=tk.X, padx=5, pady=5)
+
+            # Add radio buttons for export type
+            export_type = tk.StringVar(value="pdf")
+            ttk.Radiobutton(export_frame, text="PDF", value="pdf", variable=export_type).pack(side=tk.LEFT, padx=10)
+            ttk.Radiobutton(export_frame, text="Excel", value="xlsx", variable=export_type).pack(side=tk.LEFT, padx=10)
+            ttk.Radiobutton(export_frame, text="CSV", value="csv", variable=export_type).pack(side=tk.LEFT, padx=10)
+
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(pady=10)
+
+            # Add refresh button
+            ttk.Button(button_frame, text="Refresh",command=lambda: calculate_statistics()).pack(side=tk.LEFT, padx=5)
+
+            # Modified export button
+            ttk.Button(button_frame, text="Export",command=lambda: export_statistics(metrics, export_type.get())).pack(side=tk.LEFT, padx=5)
+
+            # Add print button
+            ttk.Button(button_frame, text="Print",command=lambda: print_statistics(stats_frame)).pack(side=tk.LEFT, padx=5)
+
+
+        except Exception as e:
+
+            messagebox.showerror("Error", f"Failed to calculate statistics: {str(e)}")
+
+            logging.error(f"Statistics calculation error: {str(e)}")
+
+    def export_statistics(metrics, format_type):
+        """Export statistics to format type in a fixed directory"""
+        try:
+
+            # Generate filename with timestamp
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = os.path.join(f"exports/order_statistics_{timestamp}.{format_type}")
+
+            if format_type == "csv":
+                with open(filename, 'w', newline='') as file:
+                    writer = csv.writer(file)
+                    writer.writerow(["Metric", "Value"])
+                    writer.writerows(metrics)
+
+            elif format_type == "xlsx":
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                ws.append(["Metric", "Value"])
+                for metric in metrics:
+                    ws.append(metric)
+                wb.save(filename)
+
+            elif format_type == "pdf":
+                doc = SimpleDocTemplate(filename, pagesize=letter)
+                elements = []
+                data = [["Metric", "Value"]] + metrics
+                table = Table(data)
+                elements.append(table)
+                doc.build(elements)
+
+            messagebox.showinfo("Success", f"Statistics exported successfully to:\n{filename}")
+
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export statistics: {str(e)}")
+
+
+    def print_statistics(frame):
+        """Print the statistics"""
+        try:
+            # Create a temporary file for printing
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+            with open(temp_file.name, 'w') as f:
+                f.write("Order Statistics Dashboard\n\n")
+                for child in frame.winfo_children():
+                    if isinstance(child, ttk.Label):
+                        f.write(f"{child.cget('text')}\n")
+
+            # Open print dialog
+            os.startfile(temp_file.name, "print")
+
+        except Exception as e:
+            messagebox.showerror("Print Error", f"Failed to print statistics: {str(e)}")
+
+    def print_selected_order():
+        """Print the details of the selected order"""
+        selected = order_table.selection()
+        if not selected:
+            messagebox.showerror("Error", "Please select an order to print.")
+            return
+
+        try:
+            # Get selected order details
+            values = order_table.item(selected[0])['values']
+
+            # Create temporary file for printing
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+            with open(temp_file.name, 'w') as f:
+                # Write header
+                f.write("TruckFlow Solutions - Order Details\n")
+                f.write("=" * 50 + "\n\n")
+
+                # Write order details
+                order_details = [
+                    ("Order ID:", values[1]),
+                    ("Order Name:", values[2]),
+                    ("Customer Name:", values[3]),
+                    ("Contact:", values[4]),
+                    ("Pickup Location:", values[5]),
+                    ("Destination:", values[6]),
+                    ("Region:", values[7]),
+                    ("Distance:", values[8]),
+                    ("Status:", values[9]),
+                    ("Weight(KG):", values[10]),
+                    ("GST%:", values[11]),
+                    ("Total Amount:", f"/-{values[12]}"),
+                    ("Paid Amount:", f"/-{values[13]}"),
+                    ("Payment Status:", values[14]),
+                    ("Remaining Amount:", f"/-{values[15]}"),
+                    ("Order Date:", values[16])
+                ]
+
+                for label, value in order_details:
+                    f.write(f"{label:<20} {value}\n")
+
+            # Open print dialog
+            os.startfile(temp_file.name, "print")
+            messagebox.showinfo("Success", "Order Recipt sent to printer")
+
+        except Exception as e:
+            messagebox.showerror("Print Error", f"Failed to print order: {str(e)}")
+
+    def on_select_order(event):
+        selected_item = order_table.selection()
+        if selected_item:
+            values = order_table.item(selected_item[0])['values']
+            order_id_entry.delete(0, tk.END)
+            order_id_entry.insert(0, values[1])
+            order_name_entry.delete(0, tk.END)
+            order_name_entry.insert(0, values[2])
+            customer_entry.delete(0, tk.END)
+            customer_entry.insert(0, values[3])
+            contact_entry.delete(0, tk.END)
+            contact_entry.insert(0, values[4])
+            pickup_entry.delete(0, tk.END)
+            pickup_entry.insert(0, values[5])
+            destination_entry.delete(0, tk.END)
+            destination_entry.insert(0, values[6])
+            region_entry.delete(0, tk.END)
+            region_entry.insert(0, values[7])
+            distance_entry.delete(0, tk.END)
+            distance_entry.insert(0, values[8])
+            status_combo.set(values[9])
+            weight_entry.delete(0, tk.END)
+            weight_entry.insert(0, values[10])
+            gst_entry.delete(0, tk.END)
+            gst_entry.insert(0, values[11])
+            total_amount_entry.delete(0, tk.END)
+            total_amount_entry.insert(0, values[12])
+            paid_amount_entry.delete(0, tk.END)
+            paid_amount_entry.insert(0, values[13])
+            payment_combo.set(values[14])
+            order_date_entry.delete(0,tk.END)
+            order_date_entry.insert(0,values[16])
+    def validate_contact(P):
+        return all(c.isdigit() or c in '+-() ' for c in P)
+    def calculate_total_with_gst(*args):
+        try:
+            amount = float(total_amount_entry.get() or 0)
+            gst_percent = float(gst_entry.get() or 0)
+            total_with_gst = amount + (amount * gst_percent / 100)
+            total_amount_entry.delete(0, tk.END)
+            total_amount_entry.insert(0, f"{total_with_gst:.2f}")
+        except ValueError:
+            pass
+
     # Root window
     root = ThemedTk(theme="arc")
     root.title("Order Management System")
@@ -2856,11 +3191,8 @@ def order_management_gui(user_role=""):
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
 
-
-
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
-
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -2916,7 +3248,9 @@ def order_management_gui(user_role=""):
     # Search frame
     search_frame = ttk.LabelFrame(main_container, text="Search", padding="5")
     search_frame.pack(fill=tk.X, pady=(0, 10))
-    search_criteria = ttk.Combobox(search_frame, values=["Order ID", "Customer Name", "Destination", "Status", "Payment Status"], width=15)
+    search_criteria = ttk.Combobox(search_frame,
+                                   values=["Order ID", "Customer Name", "Destination", "Status", "Payment Status"],
+                                   width=15)
     search_criteria.set("Order ID")
     search_criteria.pack(side=tk.LEFT, padx=5)
 
@@ -2930,8 +3264,9 @@ def order_management_gui(user_role=""):
 
     fields = [
         ("Order ID", order_id_entry := ttk.Entry(form_frame)),
-        ("Order Date", order_date_entry := DateEntry(form_frame, width=19, background='darkblue',foreground='white', borderwidth=2,date_pattern='yyyy-mm-dd')),
-
+        ("Order Date",
+         order_date_entry := DateEntry(form_frame, width=18, background='darkblue', foreground='white', borderwidth=2,
+                                       date_pattern='yyyy-mm-dd')),
         ("Order Name", order_name_entry := ttk.Entry(form_frame)),
         ("Customer Name", customer_entry := ttk.Entry(form_frame)),
         ("Contact", contact_entry := ttk.Entry(form_frame)),
@@ -2941,10 +3276,12 @@ def order_management_gui(user_role=""):
         ("Distance", distance_entry := ttk.Entry(form_frame)),
         ("Weight(KG)", weight_entry := ttk.Entry(form_frame)),
         ("GST(%)", gst_entry := ttk.Entry(form_frame)),
-        ("Status", status_combo := ttk.Combobox(form_frame, values=["Pending", "In Transit", "Delivered", "Cancelled"])),
+        ("Status", status_combo := ttk.Combobox(form_frame, width=18,
+                                                values=["Pending", "In Transit", "Delivered", "Cancelled"])),
         ("Total Amount", total_amount_entry := ttk.Entry(form_frame)),
         ("Paid Amount", paid_amount_entry := ttk.Entry(form_frame)),
-        ("Payment Status", payment_combo := ttk.Combobox(form_frame, values=["Pending", "Partial", "Completed"]))
+        ("Payment Status",
+         payment_combo := ttk.Combobox(form_frame, width=18, values=["Pending", "Partial", "Completed"]))
     ]
 
     for i, (label, widget) in enumerate(fields):
@@ -2957,7 +3294,14 @@ def order_management_gui(user_role=""):
     ttk.Button(buttons_frame, text="Add Order", command=add_order).pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Update Order", command=update_selected_order).pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Delete Order", command=delete_selected_order).pack(side=tk.LEFT, padx=5)
+    ttk.Button(buttons_frame, text="Clear", command=clear_form).pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Refresh", command=refresh_treeview).pack(side=tk.LEFT, padx=5)
+    ttk.Button(buttons_frame, text="Export PDF", command=export_to_pdf).pack(side=tk.LEFT, padx=5)
+    ttk.Button(buttons_frame, text="Export Excel", command=export_to_excel).pack(side=tk.LEFT, padx=5)
+    ttk.Button(buttons_frame, text="Statistics", command=calculate_statistics).pack(side=tk.LEFT, padx=5)
+    ttk.Button(buttons_frame, text="Print Order", command=print_selected_order).pack(side=tk.LEFT, padx=5)
+
+
     # Table
     table_frame = ttk.Frame(main_container)
     table_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -2989,8 +3333,7 @@ def order_management_gui(user_role=""):
     h_scrollbar = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL)
     h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
 
-    order_table = ttk.Treeview(table_frame, columns=order_columns, show="headings",
-                               yscrollcommand=table_scrollbar.set,
+    order_table = ttk.Treeview(table_frame, columns=order_columns, show="headings", yscrollcommand=table_scrollbar.set,
                                xscrollcommand=h_scrollbar.set, height=15)
 
     # Configure both scrollbars
@@ -3006,38 +3349,13 @@ def order_management_gui(user_role=""):
     table_scrollbar.config(command=order_table.yview)
 
     # Bind table events
-    def on_select_order(event):
-        selected_item = order_table.selection()
-        if selected_item:
-            values = order_table.item(selected_item[0])['values']
-            order_id_entry.delete(0, tk.END)
-            order_id_entry.insert(0, values[1])
-            order_name_entry.delete(0, tk.END)
-            order_name_entry.insert(0, values[2])
-            customer_entry.delete(0, tk.END)
-            customer_entry.insert(0, values[3])
-            contact_entry.delete(0, tk.END)
-            contact_entry.insert(0, values[4])
-            pickup_entry.delete(0, tk.END)
-            pickup_entry.insert(0, values[5])
-            destination_entry.delete(0, tk.END)
-            destination_entry.insert(0, values[6])
-            region_entry.delete(0, tk.END)
-            region_entry.insert(0, values[7])
-            distance_entry.delete(0, tk.END)
-            distance_entry.insert(0, values[8])
-            status_combo.set(values[9])
-            weight_entry.delete(0, tk.END)
-            weight_entry.insert(0, values[10])
-            gst_entry.delete(0, tk.END)
-            gst_entry.insert(0, values[11])
-            total_amount_entry.delete(0, tk.END)
-            total_amount_entry.insert(0, values[12])
-            paid_amount_entry.delete(0, tk.END)
-            paid_amount_entry.insert(0, values[13])
-            payment_combo.set(values[14])
-            order_date_entry.delete(0,tk.END)
-            order_date_entry.insert(0,values[15])
+
+    contact_validation = root.register(validate_contact)
+    contact_entry.config(validate='key', validatecommand=(contact_validation, '%P'))
+
+    # Add automatic GST calculation
+
+    gst_entry.bind('<FocusOut>', calculate_total_with_gst)
 
     order_table.bind("<<TreeviewSelect>>", on_select_order)
 
@@ -3061,6 +3379,8 @@ def order_management_gui(user_role=""):
 # Main Dispatch Management GUI
 def dispatch_management_gui(user_role=""):
     import datetime
+    from datetime import datetime
+
     def go_back():
         root.destroy()
         if user_role == "Admin":
@@ -3106,8 +3426,7 @@ def dispatch_management_gui(user_role=""):
             log_error(f"Failed to check driver compliance: {e}")
             return False
 
-    import sqlite3
-    from datetime import datetime
+
 
     def create_db_connection():
         try:
@@ -3629,6 +3948,143 @@ def dispatch_management_gui(user_role=""):
             log_error("Error",f"Failed to load trucks:{e}")
             return []
 
+    def print_selected_dispatch():
+        """Print selected dispatch details"""
+        selected_item = dispatch_table.selection()
+        if not selected_item:
+            messagebox.showerror("Error", "Please select a dispatch to print")
+            return
+
+        try:
+            # Get selected dispatch details
+            values = dispatch_table.item(selected_item)['values']
+
+            # Create temporary file for printing
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+            with open(temp_file.name, 'w') as f:
+                # Write header
+                f.write("TruckFlow Solutions - Dispatch Details\n")
+                f.write("=" * 50 + "\n\n")
+
+                # Write dispatch details
+                dispatch_details = [
+                    ("Order ID:", values[0]),
+                    ("Driver:", values[1]),
+                    ("Truck:", values[2]),
+                    ("Dispatch Time:", values[3]),
+                    ("Status:", values[4]),
+                    ("Estimated Delivery:", values[5]),
+                    ("Progress:", values[6])
+                ]
+
+                for label, value in dispatch_details:
+                    f.write(f"{label:<20} {value}\n")
+
+            # Send to default printer
+            os.startfile(temp_file.name, "print")
+            messagebox.showinfo("Success", "Dispatch report sent to printer")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to print dispatch: {str(e)}")
+            log_error(f"Failed to print dispatch: {str(e)}")
+
+    def export_dispatches():
+        """Export dispatch data to various formats"""
+        try:
+            # Get all dispatch data
+            dispatches = load_dispatch_data()
+            if not dispatches:
+                messagebox.showerror("Error", "No dispatch data to export")
+                return
+
+            # Create exports directory if it doesn't exist
+
+            # Get timestamp for filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            # Create export format selection window
+            export_window = tk.Toplevel(root)
+            export_window.title("Export Dispatches")
+            export_window.geometry("300x150")
+
+            def export_to_format(format_type):
+                try:
+                    if format_type == "excel":
+                        filename = f"exports/dispatches_{timestamp}.xlsx"
+                        df = pd.DataFrame(dispatches, columns=["Dispatch ID", "Order ID", "Driver", "Truck", "Dispatch Time", "Status", "Estimated Delivery Time"])
+                        df.to_excel(filename, index=False)
+
+                    elif format_type == "csv":
+                        filename = f"exports/dispatches_{timestamp}.csv"
+                        with open(filename, 'w', newline='') as f:
+                            writer = csv.writer(f)
+                            writer.writerow(
+                                ["Order ID", "Driver", "Truck", "Dispatch Time", "Status", "Estimated Delivery Time"])
+                            writer.writerows(dispatches)
+
+                    elif format_type == "pdf":
+                        filename = f"exports/dispatches_{timestamp}.pdf"
+                        doc = SimpleDocTemplate(filename, pagesize=letter)
+                        elements = []
+
+                        # Add header and data to table
+                        data = [["Order ID", "Driver", "Truck", "Dispatch Time", "Status", "Estimated Delivery Time"]]
+                        data.extend(dispatches)
+
+                        table = Table(data)
+                        table.setStyle(TableStyle([
+                            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                        ]))
+
+                        elements.append(table)
+                        doc.build(elements)
+
+                    messagebox.showinfo("Success", f"Dispatches exported successfully to {filename}")
+                    export_window.destroy()
+
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to export: {str(e)}")
+                    log_error(f"Failed to export: {str(e)}")
+
+            # Export format buttons
+            ttk.Button(export_window, text="Export to Excel", command=lambda: export_to_format("excel")).pack(pady=10)
+            ttk.Button(export_window, text="Export to CSV", command=lambda: export_to_format("csv")).pack(pady=10)
+            ttk.Button(export_window, text="Export to PDF", command=lambda: export_to_format("pdf")).pack(
+                pady=10)  # Fixed pack()
+
+        except Exception as e:  # Properly formatted exception handling
+            messagebox.showerror("Error", f"Failed to prepare export: {str(e)}")
+            log_error(f"Failed to prepare export: {str(e)}")
+
+    def create_scrolled_tree(parent, columns, height=5, col_widths=None):
+        container = ttk.Frame(parent)
+        tree = ttk.Treeview(container, columns=columns, show="headings", height=height)
+
+        # Scrollbars
+        y_scroll = ttk.Scrollbar(container, orient=tk.VERTICAL, command=tree.yview)
+        x_scroll = ttk.Scrollbar(container, orient=tk.HORIZONTAL, command=tree.xview)
+
+        tree.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
+
+        tree.grid(row=0, column=0, sticky="nsew")
+        y_scroll.grid(row=0, column=1, sticky="ns")
+        x_scroll.grid(row=1, column=0, sticky="ew")
+
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
+
+        # Set custom column widths if provided
+        if col_widths:
+            for col, width in zip(columns, col_widths):
+                tree.column(col, width=width, anchor="center")
+
+        return tree, container
+
     root = ThemedTk(theme="arc")
     root.title("Dispatch Management System")
     root.geometry("1024x768")
@@ -3642,11 +4098,8 @@ def dispatch_management_gui(user_role=""):
     header_frame = tk.Frame(root, bg="#1a237e", height=100)  # Reduced from 150 to 100
     header_frame.grid(row=0, column=0, sticky="ew")
 
-
-
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
-
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo for header
@@ -3681,7 +4134,7 @@ def dispatch_management_gui(user_role=""):
         font=("Helvetica", 10),
         bg="#1a237e",
         fg="white",
-    ).pack(expand=True)    # Navigation bar
+    ).pack(expand=True)  # Navigation bar
     nav_frame = tk.Frame(header_frame, bg="#1a237e")
     nav_frame.pack(fill=tk.X, pady=5)
     ttk.Button(nav_frame, text="← Back", command=go_back).pack(side=tk.LEFT, padx=20)
@@ -3706,56 +4159,65 @@ def dispatch_management_gui(user_role=""):
     form_frame.grid(row=0, column=0, sticky="nw", padx=5, pady=5)
 
     # Replace the DateEntry with separate date and time inputs
+    def on_focus_in(event):
+        if estimated_time.get() == 'HH:MM':
+            estimated_time.delete(0, 'end')
+            estimated_time.configure(foreground='black')
+
+    def on_focus_out(event):
+        if estimated_time.get() == '':
+            estimated_time.insert(0, 'HH:MM')
+            estimated_time.configure(foreground='gray')
+
     fields = [
-        ("Order", order_combo := ttk.Combobox(form_frame, values=get_pending_orders(), width=30)),
-        ("Driver", driver_combo := ttk.Combobox(form_frame, values=get_available_drivers(), width=30)),
-        ("Truck", truck_combo := ttk.Combobox(form_frame, values=get_available_trucks(), width=30)),
-        ("Estimated Delivery Date", estimated_date := DateEntry(form_frame, width=19,
-                                                                background='darkblue', foreground='white',
-                                                                borderwidth=2,
-                                                                date_pattern='yyyy-mm-dd')),
-        ("Estimated Delivery Time", estimated_time := ttk.Entry(form_frame, width=10))
+        ("Order", order_combo := ttk.Combobox(form_frame, values=get_pending_orders(), width=27)),
+        ("Driver", driver_combo := ttk.Combobox(form_frame, values=get_available_drivers(), width=27)),
+        ("Truck", truck_combo := ttk.Combobox(form_frame, values=get_available_trucks(), width=27)),
+        ("Estimated Delivery Date", (estimated_date := DateEntry(form_frame, width=13,
+                                                                 background='darkblue', foreground='white',
+                                                                 borderwidth=2,
+                                                                 date_pattern='yyyy-mm-dd'),
+                                     estimated_time := ttk.Entry(form_frame, width=10)))
     ]
 
     for i, (label_text, widget) in enumerate(fields):
         ttk.Label(form_frame, text=label_text).grid(row=i, column=0, padx=10, pady=8, sticky="e")
-        widget.grid(row=i, column=1, padx=10, pady=8, sticky="w")
+        if isinstance(widget, tuple):
+            widget[0].grid(row=i, column=1, padx=10, pady=8, sticky="w")
+            widget[1].grid(row=i, column=1, padx=(7, 0), pady=8, sticky="e")  # Adjusted padx and sticky
+        else:
+            widget.grid(row=i, column=1, columnspan=2, padx=10, pady=8, sticky="w")
 
-    # Buttons with improved layout
+    # Configure placeholder for time entry
+    estimated_time.insert(0, 'HH:MM')
+    estimated_time.configure(foreground='gray')
+    estimated_time.bind('<FocusIn>', on_focus_in)
+    estimated_time.bind('<FocusOut>', on_focus_out)
+
     button_frame = ttk.Frame(form_frame)
     button_frame.grid(row=len(fields), column=0, columnspan=2, pady=15)
-    for text, command in [
+
+    # Create two rows of buttons (3 buttons per row)
+    for idx, (text, command) in enumerate([
         ("Assign Dispatch", assign_dispatch),
         ("Update Status", update_selected_dispatch),
-        ("Delete Dispatch", delete_selected_dispatch),  # Changed this line
+        ("Delete Dispatch", delete_dispatch),
+        ("Print Dispatch", print_selected_dispatch),
+        ("Export", export_dispatches),
         ("Refresh", load_data_into_table)
-    ]:
-        ttk.Button(button_frame, text=text, command=command).pack(side=tk.LEFT, padx=5)
+    ]):
+        row = idx // 3  # Determines the row (0 or 1)
+        col = idx % 3  # Determines the column (0, 1, or 2)
+        ttk.Button(button_frame, text=text, command=command).grid(
+            row=row, column=col, padx=5, pady=5, sticky="ew"
+        )
+
+    # Configure grid columns to be evenly spaced
+    for i in range(3):
+        button_frame.grid_columnconfigure(i, weight=1)
 
     # Create tree container frames with scrollbars
-    def create_scrolled_tree(parent, columns, height=5, col_widths=None):
-        container = ttk.Frame(parent)
-        tree = ttk.Treeview(container, columns=columns, show="headings", height=height)
 
-        # Scrollbars
-        y_scroll = ttk.Scrollbar(container, orient=tk.VERTICAL, command=tree.yview)
-        x_scroll = ttk.Scrollbar(container, orient=tk.HORIZONTAL, command=tree.xview)
-
-        tree.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
-
-        tree.grid(row=0, column=0, sticky="nsew")
-        y_scroll.grid(row=0, column=1, sticky="ns")
-        x_scroll.grid(row=1, column=0, sticky="ew")
-
-        container.grid_rowconfigure(0, weight=1)
-        container.grid_columnconfigure(0, weight=1)
-
-        # Set custom column widths if provided
-        if col_widths:
-            for col, width in zip(columns, col_widths):
-                tree.column(col, width=width, anchor="center")
-
-        return tree, container
     # Right side trees section
     trees_frame = ttk.Frame(main_container)
     trees_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
@@ -3792,10 +4254,9 @@ def dispatch_management_gui(user_role=""):
     bottom_frame.grid_columnconfigure((0, 1), weight=1)
     bottom_frame.grid_rowconfigure(0, weight=1)
 
-    # Dispatch Table
     dispatch_frame = ttk.LabelFrame(bottom_frame, text="Dispatch Table")
     dispatch_frame.grid(row=0, column=0, sticky="nsew", padx=5)
-    dispatch_columns = ("Dispatch ID","Order ID", "Driver", "Truck", "Dispatch Time", "Status", "Estimated Delivery Time","Progress")
+    dispatch_columns = ("Dispatch ID", "Order ID", "Driver", "Truck", "Dispatch Time", "Status", "Estimated Delivery Time", "Progress")
     dispatch_table, dispatch_container = create_scrolled_tree(
         dispatch_frame,
         dispatch_columns,
@@ -3821,7 +4282,7 @@ def dispatch_management_gui(user_role=""):
     for tree in [driver_tree, truck_tree, dispatch_table, order_tree]:
         for col in tree["columns"]:
             tree.column(col, width=100, anchor="center")
-            tree.heading(col, text=col,anchor='center')
+            tree.heading(col, text=col, anchor='center')
 
     load_all_data()
     load_data_into_table()
@@ -4015,6 +4476,126 @@ def accounts_management_gui(user_role=""):
         load_data_into_table()
         update_totals_display()
 
+    def print_transaction():
+        """Print selected transaction details"""
+        selected_item = transaction_table.selection()
+        if not selected_item:
+            messagebox.showwarning("Warning", "Please select a transaction to print")
+            return
+
+        try:
+            # Get selected transaction details
+            item = transaction_table.item(selected_item[0])
+            transaction_data = item['values']
+
+            # Create temporary file for printing
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+            with open(temp_file.name, 'w') as f:
+                # Write header
+                f.write("=== TRUCKFLOW SOLUTIONS ===\n")
+                f.write("Transaction Receipt\n")
+                f.write("-" * 40 + "\n")
+
+                transaction_details = [
+                    ("Date:", transaction_data[0]),
+                    ("Type:", transaction_data[1]),
+                    ("Amount:", f"/-{transaction_data[2]}"),
+                    ("Description:", transaction_data[3]),
+                    ("Payment Method:", transaction_data[4])
+                ]
+
+                for label, value in transaction_details:
+                    f.write(f"{label:<20} {value}\n")
+
+                # Open print dialog
+            os.startfile(temp_file.name, "print")
+            messagebox.showinfo("Success", "Transaction sent to printer")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to print transaction: {e}")
+
+    def export_to_pdf():
+        """Export financial report to PDF"""
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import letter
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+            from reportlab.lib.styles import getSampleStyleSheet
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"exports/Financial_Report_{timestamp}.pdf"
+
+            doc = SimpleDocTemplate(filename, pagesize=letter)
+            elements = []
+
+            # Add title
+            styles = getSampleStyleSheet()
+            elements.append(Paragraph("Financial Report", styles['Title']))
+
+            # Get transaction data
+            data = [["Date", "Type", "Amount", "Description", "Payment Method"]]
+            for item in transaction_table.get_children():
+                row = transaction_table.item(item)['values']
+                data.append(row)
+
+            # Create table
+            table = Table(data)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.blue),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 14),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 12),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+
+            elements.append(table)
+            doc.build(elements)
+            messagebox.showinfo("Success", f"Report exported as {filename}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export report: {e}")
+
+    def filter_transactions():
+        """Filter transactions by date range and type"""
+        filter_window = tk.Toplevel(root)
+        filter_window.title("Filter Transactions")
+        filter_window.geometry("400x300")
+
+        ttk.Label(filter_window, text="Start Date:").pack(pady=5)
+        start_date = DateEntry(filter_window, width=12, background='darkblue', foreground='white', borderwidth=2)
+        start_date.pack(pady=5)
+        ttk.Label(filter_window, text="End Date:").pack(pady=5)
+        end_date = DateEntry(filter_window, width=12, background='darkblue', foreground='white', borderwidth=2)
+        end_date.pack(pady=5)
+        ttk.Label(filter_window, text="Transaction Type:").pack(pady=5)
+        type_var = tk.StringVar()
+        type_combo = ttk.Combobox(filter_window, textvariable=type_var, values=["All", "Order Payment"] + expense_types)
+        type_combo.pack(pady=5)
+        type_combo.set("All")
+
+        def apply_filter():
+            start = start_date.get_date()
+            end = end_date.get_date()
+            trans_type = type_var.get()
+
+            for item in transaction_table.get_children():
+                transaction_table.delete(item)
+
+            data = load_financial_data()
+            for transaction in data:
+                trans_date = datetime.strptime(transaction[0], "%Y-%m-%d %H:%M:%S").date()
+                if start <= trans_date <= end:
+                    if trans_type == "All" or trans_type == transaction[1]:
+                        transaction_table.insert('', 'end', values=transaction)
+
+            filter_window.destroy()
+
+        ttk.Button(filter_window, text="Apply Filter", command=apply_filter).pack(pady=20)
+
     root = ThemedTk(theme="arc")
     root.title("Accounts & Financial Management")
     root.geometry("1024x700")
@@ -4030,11 +4611,8 @@ def accounts_management_gui(user_role=""):
     header_frame.grid(row=0, column=0, sticky="nsew")
     header_frame.grid_columnconfigure(0, weight=1)
 
-
-
     # Then use it for your icon paths:
     icon_path = resource_path("icons/logo1.png")
-
     root.iconphoto(False, tk.PhotoImage(file=icon_path))
 
     # Load and resize logo with smaller dimensions
@@ -4071,7 +4649,6 @@ def accounts_management_gui(user_role=""):
         fg="white",
     ).pack(anchor="center")  # Added anchor="center"
 
-
     # Navigation bar with reduced spacing
     nav_frame = tk.Frame(header_frame, bg="#1a237e")
     nav_frame.pack(fill=tk.X, pady=2)  # Reduced pady from 5 to 2
@@ -4093,11 +4670,11 @@ def accounts_management_gui(user_role=""):
     common_label_style = {"font": ("Helvetica", 10, "bold"), "bg": "#1a237e"}
 
     # Payments label (white)
-    payments_label = tk.Label(summary_frame, text="Total Payments: /-0.00",**common_label_style, fg="#FFFFFF")
+    payments_label = tk.Label(summary_frame, text="Total Payments: /-0.00", **common_label_style, fg="#FFFFFF")
     payments_label.pack(side=tk.LEFT, padx=10)
 
     # Expenses label (light red)
-    expenses_label = tk.Label(summary_frame, text="Total Expenses: /-0.00",**common_label_style, fg="#FF8A80")
+    expenses_label = tk.Label(summary_frame, text="Total Expenses: /-0.00", **common_label_style, fg="#FF8A80")
     expenses_label.pack(side=tk.LEFT, padx=10)
 
     # Balance label (light green)
@@ -4124,7 +4701,7 @@ def accounts_management_gui(user_role=""):
 
     expense_types = ["Fuel", "Maintenance", "Salary", "Insurance", "Other"]
     ttk.Label(expense_frame, text="Type:").grid(row=0, column=0, padx=5, pady=5)
-    expense_type_combo = ttk.Combobox(expense_frame, values=expense_types)
+    expense_type_combo = ttk.Combobox(expense_frame, width=18, values=expense_types)
     expense_type_combo.grid(row=0, column=1, padx=5, pady=5)
 
     ttk.Label(expense_frame, text="Amount:").grid(row=1, column=0, padx=5, pady=5)
@@ -4137,7 +4714,7 @@ def accounts_management_gui(user_role=""):
 
     payment_types = ["Cash", "Credit", "Bank Transfer"]
     ttk.Label(expense_frame, text="Payment Type:").grid(row=3, column=0, padx=5, pady=5)
-    epayment_type_combo = ttk.Combobox(expense_frame, values=payment_types)
+    epayment_type_combo = ttk.Combobox(expense_frame, width=18, values=payment_types)
     epayment_type_combo.grid(row=3, column=1, padx=5, pady=5)
 
     ttk.Button(expense_frame, text="Record Expense", command=record_expense).grid(row=4, column=0, columnspan=2,
@@ -4156,7 +4733,7 @@ def accounts_management_gui(user_role=""):
     payment_amount_entry.grid(row=1, column=1, padx=5, pady=5)
 
     ttk.Label(payment_frame, text="Payment Type:").grid(row=2, column=0, padx=5, pady=5)
-    payment_type_combo = ttk.Combobox(payment_frame, values=payment_types)
+    payment_type_combo = ttk.Combobox(payment_frame, width=18, values=payment_types)
     payment_type_combo.grid(row=2, column=1, padx=5, pady=5)
 
     ttk.Button(payment_frame, text="Record Payment", command=record_payment).grid(row=3, column=0, columnspan=2,
@@ -4171,9 +4748,7 @@ def accounts_management_gui(user_role=""):
     invoice_order_entry.grid(row=0, column=1, padx=5, pady=5)
 
     ttk.Button(invoice_frame, text="Generate Invoice",
-               command=lambda: generate_invoice(invoice_order_entry.get())).grid(
-        row=1, column=0, columnspan=2, pady=10
-    )
+               command=lambda: generate_invoice(invoice_order_entry.get())).grid(row=1, column=0, columnspan=2, pady=10)
 
     # Adjust weights for rows in forms_frame
     forms_frame.grid_rowconfigure(0, weight=1)
@@ -4186,6 +4761,14 @@ def accounts_management_gui(user_role=""):
     table_frame.grid_columnconfigure(0, weight=1)
     table_frame.grid_rowconfigure(0, weight=1)
 
+    # Add these buttons to the table_frame
+    button_frame = ttk.Frame(table_frame)
+    button_frame.grid(row=1, column=0, sticky="ew", pady=5)
+
+    ttk.Button(button_frame, text="Print Selected", command=print_transaction).pack(side=tk.LEFT, padx=5)
+    ttk.Button(button_frame, text="Export to PDF", command=export_to_pdf).pack(side=tk.LEFT, padx=5)
+    ttk.Button(button_frame, text="Filter", command=filter_transactions).pack(side=tk.LEFT, padx=5)
+
     table_container = ttk.Frame(table_frame)
     table_container.grid(row=0, column=0, sticky="nsew")
     table_container.grid_columnconfigure(0, weight=1)
@@ -4195,8 +4778,7 @@ def accounts_management_gui(user_role=""):
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     columns = ("Date", "Type", "Amount", "Description", "Category")
-    transaction_table = ttk.Treeview(table_container, columns=columns, show="headings",
-                                     yscrollcommand=scrollbar.set)
+    transaction_table = ttk.Treeview(table_container, columns=columns, show="headings", yscrollcommand=scrollbar.set)
     for col in columns:
         transaction_table.heading(col, text=col, anchor="center")
         transaction_table.column(col, anchor="center", width=100)  # Set minimum column width
