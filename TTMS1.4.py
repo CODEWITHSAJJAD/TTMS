@@ -1575,6 +1575,12 @@ def driver_management_gui(user_role=""):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to calculate performance: {e}")
 
+    def clear_form():
+        for widget in (id_entry,name_entry,cnic_entry,license_entry,contact_entry,address_entry,joining_date_entry,resigning_date_entry,trip_count_entry,salary_entry):
+            widget.delete(0, tk.END)
+        salary_status_combo.set("")
+        trip_status_combo.set("")
+
     # Create themed root window
     root = ThemedTk(theme="arc")
     root.title("Driver Management System")
@@ -1718,6 +1724,7 @@ def driver_management_gui(user_role=""):
         ("Track Status", track_driver_status),
         ("Record Payment", lambda: track_salary_payment(id_entry.get(), float(salary_entry.get()))),
         ("Refresh", refresh_treeview),
+        ("Clear", clear_form),
         ("Export Reports", lambda: export_reports("salary")),
         ("Backup Database", backup_database),
         ("Performance Report", calculate_driver_performance)
@@ -2974,7 +2981,7 @@ def order_management_gui(user_role=""):
             paid_amount_entry.insert(0, values[13])
             payment_combo.set(values[14])
             order_date_entry.delete(0,tk.END)
-            order_date_entry.insert(0,values[15])
+            order_date_entry.insert(0,values[16])
     def validate_contact(P):
         return all(c.isdigit() or c in '+-() ' for c in P)
     def calculate_total_with_gst(*args):
@@ -3098,6 +3105,7 @@ def order_management_gui(user_role=""):
     ttk.Button(buttons_frame, text="Add Order", command=add_order).pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Update Order", command=update_selected_order).pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Delete Order", command=delete_selected_order).pack(side=tk.LEFT, padx=5)
+    ttk.Button(buttons_frame, text="Clear", command=clear_form).pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Refresh", command=refresh_treeview).pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Export PDF", command=export_to_pdf).pack(side=tk.LEFT, padx=5)
     ttk.Button(buttons_frame, text="Export Excel", command=export_to_excel).pack(side=tk.LEFT, padx=5)
@@ -3621,27 +3629,32 @@ def dispatch_management_gui(user_role=""):
             return
 
         try:
+            # Get selected dispatch details
             values = dispatch_table.item(selected_item)['values']
 
-            # Generate filename with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"exports/dispatch_report_{timestamp}.txt"
+            # Create temporary file for printing
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+            with open(temp_file.name, 'w') as f:
+                # Write header
+                f.write("TruckFlow Solutions - Dispatch Details\n")
+                f.write("=" * 50 + "\n\n")
 
-            with open(filename, 'w') as f:
-                f.write("=== TRUCKFLOW SOLUTIONS ===\n")
-                f.write("Dispatch Report\n")
-                f.write("-" * 40 + "\n")
-                f.write(f"Order ID: {values[0]}\n")
-                f.write(f"Driver: {values[1]}\n")
-                f.write(f"Truck: {values[2]}\n")
-                f.write(f"Dispatch Time: {values[3]}\n")
-                f.write(f"Status: {values[4]}\n")
-                f.write(f"Estimated Delivery: {values[5]}\n")
-                f.write(f"Progress: {values[6]}\n")
-                f.write("-" * 40 + "\n")
+                # Write dispatch details
+                dispatch_details = [
+                    ("Order ID:", values[0]),
+                    ("Driver:", values[1]),
+                    ("Truck:", values[2]),
+                    ("Dispatch Time:", values[3]),
+                    ("Status:", values[4]),
+                    ("Estimated Delivery:", values[5]),
+                    ("Progress:", values[6])
+                ]
+
+                for label, value in dispatch_details:
+                    f.write(f"{label:<20} {value}\n")
 
             # Send to default printer
-            os.startfile(filename, "print")
+            os.startfile(temp_file.name, "print")
             messagebox.showinfo("Success", "Dispatch report sent to printer")
 
         except Exception as e:
@@ -4115,27 +4128,34 @@ def accounts_management_gui(user_role=""):
             messagebox.showwarning("Warning", "Please select a transaction to print")
             return
 
-        item = transaction_table.item(selected_item[0])
-        transaction_data = item['values']
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"exports/Transaction_{timestamp}.txt"
-
         try:
-            with open(filename, 'w') as f:
+            # Get selected transaction details
+            item = transaction_table.item(selected_item[0])
+            transaction_data = item['values']
+
+            # Create temporary file for printing
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+            with open(temp_file.name, 'w') as f:
+                # Write header
                 f.write("=== TRUCKFLOW SOLUTIONS ===\n")
                 f.write("Transaction Receipt\n")
                 f.write("-" * 40 + "\n")
-                f.write(f"Date: {transaction_data[0]}\n")
-                f.write(f"Type: {transaction_data[1]}\n")
-                f.write(f"Amount: /-{transaction_data[2]}\n")
-                f.write(f"Description: {transaction_data[3]}\n")
-                f.write(f"Payment Method: {transaction_data[4]}\n")
-                f.write("-" * 40 + "\n")
 
-            # Open the file with default printer
-            os.startfile(filename, "print")
+                transaction_details = [
+                    ("Date:", transaction_data[0]),
+                    ("Type:", transaction_data[1]),
+                    ("Amount:", f"/-{transaction_data[2]}"),
+                    ("Description:", transaction_data[3]),
+                    ("Payment Method:", transaction_data[4])
+                ]
+
+                for label, value in transaction_details:
+                    f.write(f"{label:<20} {value}\n")
+
+                # Open print dialog
+            os.startfile(temp_file.name, "print")
             messagebox.showinfo("Success", "Transaction sent to printer")
+
         except Exception as e:
             messagebox.showerror("Error", f"Failed to print transaction: {e}")
 
